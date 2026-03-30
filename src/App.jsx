@@ -4,6 +4,48 @@ import {
   Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
 } from "recharts";
 
+// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
+const SUPABASE_URL = "https://gabwxecjrrxssjbrmiwh.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdhYnd4ZWNqcnJ4c3NqYnJtaXdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxNjYwMzcsImV4cCI6MjA4OTc0MjAzN30.rV492tHGS3rDlnqFtidmU3vrWTKuLmOPWkbSerxWnlo";
+const SB = { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
+
+async function sbGet(table) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, { headers: SB });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbUpsert(table, rows) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: "POST",
+    headers: { ...SB, "Prefer": "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify(rows)
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+async function sbDelete(table, id) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: "DELETE", headers: SB
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+function habitToDb(h) {
+  return { id:h.id, name:h.name, emoji:h.emoji, category:h.category, color:h.color,
+    goal_type:h.goalType, goal_value:h.goalValue, goal_unit:h.goalUnit,
+    frequency:h.frequency, created_at:h.createdAt, is_active:h.isActive };
+}
+function habitFromDb(h) {
+  return { id:h.id, name:h.name, emoji:h.emoji, category:h.category, color:h.color,
+    goalType:h.goal_type, goalValue:Number(h.goal_value), goalUnit:h.goal_unit,
+    frequency:h.frequency, createdAt:h.created_at, isActive:h.is_active };
+}
+function entryToDb(e) {
+  return { id:e.id, habit_id:e.habitId, date:e.date, value:e.value, completed:e.completed };
+}
+function entryFromDb(e) {
+  return { id:e.id, habitId:e.habit_id, date:e.date, value:Number(e.value), completed:e.completed };
+}
+
 // ─── PALETTE & CONSTANTS ──────────────────────────────────────────────────────
 const FOREST = "#1A6B4A";
 const FOREST_LIGHT = "#2A8A62";
@@ -253,46 +295,32 @@ export default function Habitus() {
   const [syncLog, setSyncLog] = useState([]);
   const [showSyncLog, setShowSyncLog] = useState(false);
 
-  // ── LOCAL STORAGE ──
+  // ── SUPABASE LOAD ──
   const loadFromStorage = useCallback(async (showSpinner = false) => {
     if (showSpinner) setSyncing(true);
     try {
-      const r = await window.storage.get("habitus-data");
-      if (r?.value) {
-        const d = JSON.parse(r.value);
-        setHabits(d.habits || []);
-        setEntries(d.entries || []);
-      } else {
-        const sample = generateSampleData();
-        setHabits(sample.habits);
-        setEntries(sample.entries);
-      }
-    } catch {
-      const sample = generateSampleData();
-      setHabits(sample.habits);
-      setEntries(sample.entries);
+      const [habitsRaw, entriesRaw] = await Promise.all([sbGet("habits"), sbGet("entries")]);
+      setHabits(habitsRaw.map(habitFromDb));
+      setEntries(entriesRaw.map(entryFromDb));
+      setLastSync(new Date());
+    } catch(e) {
+      console.error("Erro ao carregar:", e);
     }
     setLoaded(true);
-    setLastSync(new Date());
     if (showSpinner) setSyncing(false);
   }, []);
 
   useEffect(() => { loadFromStorage(); }, []);
 
-  // Auto-save on every change
-  useEffect(() => {
-    if (!loaded) return;
-    const t = setTimeout(async () => {
-      try { await window.storage.set("habitus-data", JSON.stringify({ habits, entries })); } catch {}
-    }, 500);
-    return () => clearTimeout(t);
-  }, [habits, entries, loaded]);
-
-  const saveHabit = useCallback((form) => {
+  const saveHabit = useCallback(async (form) => {
     if (editHabit) {
-      setHabits(hs => hs.map(h => h.id === editHabit.id ? {...form, id:h.id, createdAt:h.createdAt} : h));
+      const updated = {...form, id:editHabit.id, createdAt:editHabit.createdAt};
+      setHabits(hs => hs.map(h => h.id === editHabit.id ? updated : h));
+      await sbUpsert("habits", [habitToDb(updated)]);
     } else {
-      setHabits(hs => [...hs, {...form, id:uuid(), createdAt:todayStr()}]);
+      const novo = {...form, id:uuid(), createdAt:todayStr()};
+      setHabits(hs => [...hs, novo]);
+      await sbUpsert("habits", [habitToDb(novo)]);
     }
     setModal(null); setEditHabit(null);
   }, [editHabit]);
@@ -303,40 +331,48 @@ export default function Habitus() {
     setConfirmDelete(id);
   }, []);
 
-  const confirmDeleteHabit = useCallback((id) => {
+  const confirmDeleteHabit = useCallback(async (id) => {
     setHabits(hs => hs.filter(h => h.id !== id));
     setEntries(es => es.filter(e => e.habitId !== id));
     setConfirmDelete(null);
+    await sbDelete("habits", id);
   }, []);
 
   const getEntry = useCallback((habitId, date) =>
     entries.find(e => e.habitId === habitId && e.date === date), [entries]);
 
-  const toggleEntry = useCallback((habit, date) => {
+  const toggleEntry = useCallback(async (habit, date) => {
     const existing = entries.find(e => e.habitId === habit.id && e.date === date);
     if (existing) {
       if (existing.completed) {
         setEntries(es => es.filter(e => !(e.habitId === habit.id && e.date === date)));
+        await sbDelete("entries", existing.id);
       } else {
-        setEntries(es => es.map(e =>
-          e.habitId === habit.id && e.date === date
-            ? {...e, value: habit.goalValue, completed: true} : e
-        ));
+        const updated = {...existing, value:habit.goalValue, completed:true};
+        setEntries(es => es.map(e => e.habitId === habit.id && e.date === date ? updated : e));
+        await sbUpsert("entries", [entryToDb(updated)]);
       }
     } else {
-      setEntries(es => [...es, {id:uuid(), habitId:habit.id, date, value:habit.goalValue, completed:true}]);
+      const novo = {id:uuid(), habitId:habit.id, date, value:habit.goalValue, completed:true};
+      setEntries(es => [...es, novo]);
+      await sbUpsert("entries", [entryToDb(novo)]);
     }
   }, [entries]);
 
-  const setEntryValue = useCallback((habit, date, value) => {
+  const setEntryValue = useCallback(async (habit, date, value) => {
     const num = parseFloat(value) || 0;
     const completed = num >= habit.goalValue;
-    setEntries(es => {
-      const existing = es.find(e => e.habitId === habit.id && e.date === date);
-      if (existing) return es.map(e => e.habitId === habit.id && e.date === date ? {...e, value:num, completed} : e);
-      return [...es, {id:uuid(), habitId:habit.id, date, value:num, completed}];
-    });
-  }, []);
+    const existing = entries.find(e => e.habitId === habit.id && e.date === date);
+    if (existing) {
+      const updated = {...existing, value:num, completed};
+      setEntries(es => es.map(e => e.habitId === habit.id && e.date === date ? updated : e));
+      await sbUpsert("entries", [entryToDb(updated)]);
+    } else {
+      const novo = {id:uuid(), habitId:habit.id, date, value:num, completed};
+      setEntries(es => [...es, novo]);
+      await sbUpsert("entries", [entryToDb(novo)]);
+    }
+  }, [entries]);
 
   const todayHabits = useMemo(() => {
     const dow = new Date(selectedDate + "T12:00:00").getDay();
@@ -487,7 +523,11 @@ export default function Habitus() {
           confirmDelete={confirmDelete}
           onConfirmDelete={confirmDeleteHabit}
           onCancelDelete={() => setConfirmDelete(null)}
-          onToggleActive={(id) => setHabits(hs => hs.map(h => h.id===id ? {...h,isActive:!h.isActive} : h))}
+          onToggleActive={async (id) => {
+            const updated = habits.map(h => h.id===id ? {...h,isActive:!h.isActive} : h);
+            setHabits(updated);
+            await sbUpsert("habits", [habitToDb(updated.find(h=>h.id===id))]);
+          }}
         />}
 
         {/* REPORTS TAB */}
@@ -1091,4 +1131,3 @@ function AnnualReport({ habits, entries }) {
     </div>
   );
 }
-
