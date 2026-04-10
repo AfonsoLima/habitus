@@ -65,8 +65,12 @@ const DAYS_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
 function uuid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
-function todayStr() { return new Date().toISOString().slice(0,10); }
-function dateStr(d) { return d.toISOString().slice(0,10); }
+function brasiliaDateStr(d) {
+  const s = d.toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" });
+  return s.slice(0, 10);
+}
+function todayStr() { return brasiliaDateStr(new Date()); }
+function dateStr(d) { return brasiliaDateStr(d); }
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
 function startOfWeek(d) { const r = new Date(d); r.setDate(r.getDate() - r.getDay()); return r; }
 
@@ -361,7 +365,7 @@ export default function Habitus() {
 
   const setEntryValue = useCallback(async (habit, date, value) => {
     const num = parseFloat(value) || 0;
-    const completed = num >= habit.goalValue;
+    const completed = num > 0;
     const existing = entries.find(e => e.habitId === habit.id && e.date === date);
     if (existing) {
       const updated = {...existing, value:num, completed};
@@ -645,31 +649,63 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
                   </div>
                 )}
               </div>
-              <div style={{display:"flex", flexDirection:"column", gap:4, flexShrink:0}}>
-                {h.goalType !== "check" && (
-                  <input
-                    type="number"
-                    value={entryInput[key] !== undefined ? entryInput[key] : (entry?.value || "")}
-                    onChange={e => setEntryInput(i => ({...i, [key]: e.target.value}))}
-                    onBlur={e => {
-                      if (e.target.value) setEntryValue(h, selectedDate, e.target.value);
-                    }}
-                    placeholder={h.goalValue}
-                    style={{
-                      width:60, padding:"6px 8px", borderRadius:8, border:`1.5px solid ${WARM}`,
-                      fontSize:12, textAlign:"center", background:"#fff", color:SLATE, outline:"none"
-                    }}
-                  />
+              <div style={{display:"flex", flexDirection:"column", gap:4, flexShrink:0, alignItems:"center"}}>
+                {h.goalType === "time" ? (
+                  <>
+                    <div style={{display:"flex", alignItems:"center", gap:4}}>
+                      <input
+                        type="number"
+                        value={entryInput[key] !== undefined ? entryInput[key] : (entry?.value || "")}
+                        onChange={e => {
+                          setEntryInput(i => ({...i, [key]: e.target.value}));
+                          if (e.target.value) setEntryValue(h, selectedDate, e.target.value);
+                        }}
+                        placeholder="0"
+                        style={{
+                          width:52, padding:"6px 6px", borderRadius:8, border:`1.5px solid ${WARM}`,
+                          fontSize:12, textAlign:"center", background:"#fff", color:SLATE, outline:"none"
+                        }}
+                      />
+                      <span style={{fontSize:10, color:BARK, fontWeight:600}}>{h.goalUnit}</span>
+                    </div>
+                    <button className="check-btn" onClick={() => toggleEntry(h, selectedDate)} style={{
+                      width:42, height:42, borderRadius:12, border:"none", cursor:"pointer",
+                      background: entry?.completed ? h.color : entry?.value > 0 ? `${h.color}55` : WARM,
+                      color: entry?.completed || entry?.value > 0 ? "#fff" : BARK,
+                      fontSize:20, display:"flex", alignItems:"center", justifyContent:"center",
+                      transition:"all 0.2s", boxShadow: entry?.completed ? `0 4px 12px ${h.color}55` : "none"
+                    }}>
+                      {entry?.completed ? "✓" : entry?.value > 0 ? "~" : "○"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {h.goalType === "numeric" && (
+                      <input
+                        type="number"
+                        value={entryInput[key] !== undefined ? entryInput[key] : (entry?.value || "")}
+                        onChange={e => {
+                          setEntryInput(i => ({...i, [key]: e.target.value}));
+                          if (e.target.value) setEntryValue(h, selectedDate, e.target.value);
+                        }}
+                        placeholder={h.goalValue}
+                        style={{
+                          width:60, padding:"6px 8px", borderRadius:8, border:`1.5px solid ${WARM}`,
+                          fontSize:12, textAlign:"center", background:"#fff", color:SLATE, outline:"none"
+                        }}
+                      />
+                    )}
+                    <button className="check-btn" onClick={() => toggleEntry(h, selectedDate)} style={{
+                      width:42, height:42, borderRadius:12, border:"none", cursor:"pointer",
+                      background: entry?.completed ? h.color : WARM,
+                      color: entry?.completed ? "#fff" : BARK,
+                      fontSize:20, display:"flex", alignItems:"center", justifyContent:"center",
+                      transition:"all 0.2s", boxShadow: entry?.completed ? `0 4px 12px ${h.color}55` : "none"
+                    }}>
+                      {entry?.completed ? "✓" : "○"}
+                    </button>
+                  </>
                 )}
-                <button className="check-btn" onClick={() => toggleEntry(h, selectedDate)} style={{
-                  width:42, height:42, borderRadius:12, border:"none", cursor:"pointer",
-                  background: entry?.completed ? h.color : WARM,
-                  color: entry?.completed ? "#fff" : BARK,
-                  fontSize:20, display:"flex", alignItems:"center", justifyContent:"center",
-                  transition:"all 0.2s", boxShadow: entry?.completed ? `0 4px 12px ${h.color}55` : "none"
-                }}>
-                  {entry?.completed ? "✓" : "○"}
-                </button>
               </div>
             </div>
           );
@@ -876,6 +912,189 @@ function WeeklyReport({ habits, entries }) {
             <Line type="monotone" dataKey="pct" stroke={FOREST} strokeWidth={2.5} dot={{fill:FOREST,r:4}} activeDot={{r:6}} />
           </LineChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Volume grid */}
+      <div style={{...cardStyle}}>
+        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 16px"}}>Volume Semanal</h3>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%", borderCollapse:"separate", borderSpacing:"4px 6px"}}>
+            <thead>
+              <tr>
+                <th style={{width:90, textAlign:"left", fontSize:10, fontWeight:700, color:BARK, textTransform:"uppercase", letterSpacing:"0.06em", paddingBottom:4}}>Hábito</th>
+                {days.map((d, i) => (
+                  <th key={i} style={{textAlign:"center", fontSize:10, fontWeight:700, color: dateStr(d) === todayStr() ? FOREST : BARK, textTransform:"uppercase", letterSpacing:"0.04em", paddingBottom:4, minWidth:34}}>
+                    <div>{DAYS_PT[d.getDay()]}</div>
+                    <div style={{fontSize:11, fontWeight:700, color: dateStr(d) === todayStr() ? FOREST : SLATE}}>{d.getDate()}</div>
+                  </th>
+                ))}
+                <th style={{textAlign:"center", fontSize:10, fontWeight:700, color:BARK, textTransform:"uppercase", letterSpacing:"0.04em", paddingBottom:4, paddingLeft:6}}>%</th>
+              </tr>
+            </thead>
+            <tbody>
+              {habits.filter(h=>h.isActive).map(h => {
+                let done = 0, expected = 0;
+                return (
+                  <tr key={h.id}>
+                    <td style={{paddingRight:8}}>
+                      <div style={{display:"flex", alignItems:"center", gap:5}}>
+                        <span style={{fontSize:14}}>{h.emoji}</span>
+                        <span style={{fontSize:11, fontWeight:600, color:SLATE, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:60}}>{h.name.split(" ")[0]}</span>
+                      </div>
+                    </td>
+                    {days.map((d, i) => {
+                      const ds = dateStr(d);
+                      const dow = d.getDay();
+                      const inFreq = h.frequency[dow];
+                      const entry = entries.find(e => e.habitId === h.id && e.date === ds);
+                      const completed = entry?.completed;
+                      const partial = entry?.value > 0 && !completed;
+                      if (inFreq) { expected++; if (completed) done++; }
+                      return (
+                        <td key={i} style={{textAlign:"center"}}>
+                          {!inFreq ? (
+                            <div style={{width:28, height:28, borderRadius:8, background:"#F5F0EA", margin:"0 auto"}} />
+                          ) : completed ? (
+                            <div style={{width:28, height:28, borderRadius:8, background:h.color, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 2px 6px ${h.color}44`}}>
+                              <span style={{color:"#fff", fontSize:14, fontWeight:700}}>✓</span>
+                            </div>
+                          ) : partial ? (
+                            <div style={{width:28, height:28, borderRadius:8, background:`${h.color}40`, border:`2px solid ${h.color}`, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center"}}>
+                              <span style={{color:h.color, fontSize:12, fontWeight:700}}>~</span>
+                            </div>
+                          ) : (
+                            <div style={{width:28, height:28, borderRadius:8, background:WARM, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center"}}>
+                              <span style={{color:BARK, fontSize:12, opacity:0.4}}>○</span>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td style={{textAlign:"center", paddingLeft:6}}>
+                      <span style={{fontSize:12, fontWeight:700, color: done===expected&&expected>0 ? GOLD : done>0 ? FOREST : BARK}}>
+                        {expected > 0 ? `${Math.round(done/expected*100)}%` : "—"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{display:"flex", gap:12, marginTop:14, flexWrap:"wrap"}}>
+          {[
+            {color:FOREST, label:"Concluído", icon:"✓"},
+            {color:FOREST, label:"Parcial", partial:true, icon:"~"},
+            {color:BARK, label:"Não feito", empty:true, icon:"○"},
+            {color:"#F5F0EA", label:"Não previsto", noicon:true},
+          ].map((l,i) => (
+            <div key={i} style={{display:"flex", alignItems:"center", gap:5}}>
+              <div style={{
+                width:16, height:16, borderRadius:4,
+                background: l.partial ? `${FOREST}40` : l.empty ? WARM : l.noicon ? "#F5F0EA" : FOREST,
+                border: l.partial ? `2px solid ${FOREST}` : "none",
+                display:"flex", alignItems:"center", justifyContent:"center"
+              }}>
+                {!l.noicon && <span style={{fontSize:9, color: l.partial ? FOREST : l.empty ? BARK : "#fff", opacity: l.empty ? 0.4 : 1}}>{l.icon}</span>}
+              </div>
+              <span style={{fontSize:10, color:BARK, fontWeight:600}}>{l.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Text summary per habit */}
+      <div style={{...cardStyle}}>
+        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 16px"}}>Resumo da Semana</h3>
+        <div style={{display:"flex", flexDirection:"column", gap:12}}>
+          {habits.filter(h=>h.isActive).map(h => {
+            // Current week stats
+            let curValue = 0, curDone = 0, curExpected = 0;
+            dayStrs.forEach(d => {
+              const dow = new Date(d+"T12:00:00").getDay();
+              if (!h.frequency[dow]) return;
+              curExpected++;
+              const entry = entries.find(e => e.habitId === h.id && e.date === d);
+              if (entry?.completed) { curDone++; curValue += entry.value || 0; }
+              else if (entry?.value > 0) curValue += entry.value;
+            });
+
+            // Previous week stats
+            const prevDayStrs = days.map(d => dateStr(addDays(d, -7)));
+            let prevValue = 0, prevDone = 0, prevExpected = 0;
+            prevDayStrs.forEach(d => {
+              const dow = new Date(d+"T12:00:00").getDay();
+              if (!h.frequency[dow]) return;
+              prevExpected++;
+              const entry = entries.find(e => e.habitId === h.id && e.date === d);
+              if (entry?.completed) { prevDone++; prevValue += entry.value || 0; }
+              else if (entry?.value > 0) prevValue += entry.value;
+            });
+
+            const isTime = h.goalType === "time";
+            const unit = h.goalUnit || "min";
+
+            // Format time nicely
+            function fmtTime(mins) {
+              if (mins >= 60) {
+                const h = Math.floor(mins/60);
+                const m = mins % 60;
+                return m > 0 ? `${h}h ${m}min` : `${h}h`;
+              }
+              return `${mins}min`;
+            }
+
+            // Build main sentence
+            let mainText = "";
+            if (isTime) {
+              mainText = curValue > 0
+                ? `Você dedicou ${fmtTime(curValue)} de ${h.name.toLowerCase()} esta semana.`
+                : `Você não registrou ${h.name.toLowerCase()} esta semana.`;
+            } else {
+              mainText = curDone > 0
+                ? `Você realizou ${h.name.toLowerCase()} ${curDone} vez${curDone > 1 ? "es" : ""} esta semana.`
+                : `Você não realizou ${h.name.toLowerCase()} esta semana.`;
+            }
+
+            // Build comparison sentence
+            let compareText = "";
+            let trend = 0;
+            if (isTime) {
+              const diff = curValue - prevValue;
+              trend = diff > 0 ? 1 : diff < 0 ? -1 : 0;
+              if (prevValue === 0 && curValue === 0) compareText = "Nenhum registro nas últimas duas semanas.";
+              else if (prevValue === 0) compareText = "Sem dados na semana anterior para comparar.";
+              else if (diff === 0) compareText = `Mesmo volume da semana passada (${fmtTime(prevValue)}).`;
+              else compareText = `${diff > 0 ? "↑ Mais" : "↓ Menos"} ${fmtTime(Math.abs(diff))} do que na semana passada (${fmtTime(prevValue)}).`;
+            } else {
+              const diff = curDone - prevDone;
+              trend = diff > 0 ? 1 : diff < 0 ? -1 : 0;
+              if (prevDone === 0 && curDone === 0) compareText = "Nenhum registro nas últimas duas semanas.";
+              else if (prevDone === 0) compareText = "Sem dados na semana anterior para comparar.";
+              else if (diff === 0) compareText = `Mesmo número da semana passada (${prevDone}x).`;
+              else compareText = `${diff > 0 ? "↑" : "↓"} ${Math.abs(diff)} vez${Math.abs(diff)>1?"es":""} ${diff > 0 ? "a mais" : "a menos"} do que na semana passada (${prevDone}x).`;
+            }
+
+            const trendColor = trend > 0 ? FOREST : trend < 0 ? "#E63946" : BARK;
+
+            return (
+              <div key={h.id} style={{
+                padding:"12px 14px", borderRadius:12, background:CREAM,
+                borderLeft:`4px solid ${h.color}`
+              }}>
+                <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:6}}>
+                  <span style={{fontSize:20}}>{h.emoji}</span>
+                  <span style={{fontWeight:700, fontSize:13, color:SLATE}}>{h.name}</span>
+                </div>
+                <p style={{margin:"0 0 4px", fontSize:13, color:SLATE, lineHeight:1.5}}>{mainText}</p>
+                <p style={{margin:0, fontSize:12, color:trendColor, fontWeight:600, lineHeight:1.5}}>{compareText}</p>
+              </div>
+            );
+          })}
+          {habits.filter(h=>h.isActive).length === 0 && (
+            <div style={{textAlign:"center", color:BARK, padding:16}}>Nenhum hábito ativo.</div>
+          )}
+        </div>
       </div>
     </div>
   );
