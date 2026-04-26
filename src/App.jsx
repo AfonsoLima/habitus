@@ -1,168 +1,183 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend
-} from "recharts";
 
-// ─── SUPABASE CONFIG ──────────────────────────────────────────────────────────
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
 const SUPABASE_URL = "https://gabwxecjrrxssjbrmiwh.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdhYnd4ZWNqcnJ4c3NqYnJtaXdoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxNjYwMzcsImV4cCI6MjA4OTc0MjAzN30.rV492tHGS3rDlnqFtidmU3vrWTKuLmOPWkbSerxWnlo";
 const SB = { "Content-Type": "application/json", "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
+async function sbGet(t) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=*`, { headers: SB }); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+async function sbUpsert(t, rows) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}`, { method: "POST", headers: { ...SB, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows) }); if (!r.ok) throw new Error(await r.text()); }
+async function sbDelete(t, id) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`, { method: "DELETE", headers: SB }); if (!r.ok) throw new Error(await r.text()); }
+const habitToDb = h => ({ id: h.id, name: h.name, emoji: h.emoji, category: h.category, color: h.color, goal_type: h.goalType, goal_value: h.goalValue, goal_unit: h.goalUnit, frequency: h.frequency, created_at: h.createdAt, is_active: h.isActive });
+const habitFromDb = h => ({ id: h.id, name: h.name, emoji: h.emoji, category: h.category, color: h.color, goalType: h.goal_type, goalValue: Number(h.goal_value), goalUnit: h.goal_unit, frequency: h.frequency, createdAt: h.created_at, isActive: h.is_active });
+const entryToDb = e => ({ id: e.id, habit_id: e.habitId, date: e.date, value: e.value, completed: e.completed });
+const entryFromDb = e => ({ id: e.id, habitId: e.habit_id, date: e.date, value: Number(e.value), completed: e.completed });
 
-async function sbGet(table) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?select=*`, { headers: SB });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-async function sbUpsert(table, rows) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-    method: "POST",
-    headers: { ...SB, "Prefer": "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify(rows)
-  });
-  if (!r.ok) throw new Error(await r.text());
-}
-async function sbDelete(table, id) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-    method: "DELETE", headers: SB
-  });
-  if (!r.ok) throw new Error(await r.text());
-}
-
-function habitToDb(h) {
-  return { id:h.id, name:h.name, emoji:h.emoji, category:h.category, color:h.color,
-    goal_type:h.goalType, goal_value:h.goalValue, goal_unit:h.goalUnit,
-    frequency:h.frequency, created_at:h.createdAt, is_active:h.isActive };
-}
-function habitFromDb(h) {
-  return { id:h.id, name:h.name, emoji:h.emoji, category:h.category, color:h.color,
-    goalType:h.goal_type, goalValue:Number(h.goal_value), goalUnit:h.goal_unit,
-    frequency:h.frequency, createdAt:h.created_at, isActive:h.is_active };
-}
-function entryToDb(e) {
-  return { id:e.id, habit_id:e.habitId, date:e.date, value:e.value, completed:e.completed };
-}
-function entryFromDb(e) {
-  return { id:e.id, habitId:e.habit_id, date:e.date, value:Number(e.value), completed:e.completed };
-}
-
-// ─── PALETTE & CONSTANTS ──────────────────────────────────────────────────────
-const FOREST = "#1A6B4A";
-const FOREST_LIGHT = "#2A8A62";
-const FOREST_DARK = "#0F4030";
-const CREAM = "#F7F3EE";
-const WARM = "#E8DDD0";
-const BARK = "#6B5744";
-const GOLD = "#C9963E";
-const SLATE = "#3D4A3E";
-
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+const uuid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const brasiliaDateStr = d => d.toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 10);
+const todayStr = () => brasiliaDateStr(new Date());
+const dateStr = d => brasiliaDateStr(d);
+const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+const startOfWeek = d => { const r = new Date(d); r.setDate(r.getDate() - r.getDay()); return r; };
+const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const CATEGORIES = ["Espiritual", "Intelectual", "Físico", "Profissional", "Saúde", "Relacional"];
 const CAT_COLORS = {
-  Espiritual: "#7B68EE", Intelectual: "#1A6B4A", Físico: "#E07B39",
-  Profissional: "#2D7DD2", Saúde: "#E63946", Relacional: "#C9963E"
+  Espiritual: "oklch(0.74 0.14 290)", Intelectual: "oklch(0.78 0.12 160)",
+  "Físico": "oklch(0.78 0.13 45)", Profissional: "oklch(0.78 0.12 240)",
+  "Saúde": "oklch(0.72 0.15 20)", Relacional: "oklch(0.80 0.11 80)"
 };
-const DAYS_PT = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const MONTHS_PT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-function uuid() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
-function brasiliaDateStr(d) {
-  const s = d.toLocaleString("sv-SE", { timeZone: "America/Sao_Paulo" });
-  return s.slice(0, 10);
-}
-function todayStr() { return brasiliaDateStr(new Date()); }
-function dateStr(d) { return brasiliaDateStr(d); }
-function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
-function startOfWeek(d) { const r = new Date(d); r.setDate(r.getDate() - r.getDay()); return r; }
-
-// ─── SAMPLE DATA ──────────────────────────────────────────────────────────────
-function generateSampleData() {
-  const habits = [
-    { id:"h1", name:"Oração Matinal", emoji:"🙏", category:"Espiritual", color:"#7B68EE",
-      goalType:"time", goalValue:30, goalUnit:"min", frequency:{0:true,1:true,2:true,3:true,4:true,5:true,6:true}, createdAt:"2025-01-01", isActive:true },
-    { id:"h2", name:"Leitura", emoji:"📚", category:"Intelectual", color:"#1A6B4A",
-      goalType:"numeric", goalValue:20, goalUnit:"páginas", frequency:{1:true,2:true,3:true,4:true,5:true}, createdAt:"2025-01-01", isActive:true },
-    { id:"h3", name:"Exercício", emoji:"🏃", category:"Físico", color:"#E07B39",
-      goalType:"time", goalValue:45, goalUnit:"min", frequency:{1:true,3:true,5:true}, createdAt:"2025-01-15", isActive:true },
-    { id:"h4", name:"Estudo Bíblico", emoji:"✝️", category:"Espiritual", color:"#9B59B6",
-      goalType:"numeric", goalValue:2, goalUnit:"capítulos", frequency:{1:true,2:true,3:true,4:true,5:true,6:true,0:true}, createdAt:"2025-02-01", isActive:true },
-    { id:"h5", name:"Coding", emoji:"💻", category:"Profissional", color:"#2D7DD2",
-      goalType:"time", goalValue:60, goalUnit:"min", frequency:{1:true,2:true,3:true,4:true,5:true}, createdAt:"2025-02-15", isActive:true },
-  ];
-
-  const entries = [];
-  const today = new Date();
-  for (let i = 90; i >= 0; i--) {
-    const d = addDays(today, -i);
-    const ds = dateStr(d);
-    const dow = d.getDay();
-    habits.forEach(h => {
-      if (!h.frequency[dow]) return;
-      const rand = Math.random();
-      if (rand < 0.75) {
-        const pct = 0.6 + Math.random() * 0.5;
-        entries.push({
-          id: uuid(), habitId: h.id, date: ds,
-          value: Math.round(h.goalValue * Math.min(pct, 1)),
-          completed: pct >= 1,
-        });
-      }
-    });
-  }
-  return { habits, entries };
-}
-
-// ─── STREAK CALC ──────────────────────────────────────────────────────────────
 function calcStreak(habitId, entries, habits) {
   const habit = habits.find(h => h.id === habitId);
   if (!habit) return { current: 0, best: 0 };
-  const completedDates = new Set(
-    entries.filter(e => e.habitId === habitId && e.completed).map(e => e.date)
-  );
+  const done = new Set(entries.filter(e => e.habitId === habitId && e.completed).map(e => e.date));
   let current = 0, best = 0, count = 0;
-  const today = new Date();
   for (let i = 0; i <= 365; i++) {
-    const d = dateStr(addDays(today, -i));
-    const dow = addDays(today, -i).getDay();
+    const d = dateStr(addDays(new Date(), -i)), dow = addDays(new Date(), -i).getDay();
     if (!habit.frequency[dow]) continue;
-    if (completedDates.has(d)) {
-      count++;
-      if (i === 0 || i === 1) current = count;
-    } else {
-      if (i === 0) { current = 0; }
-      best = Math.max(best, count);
-      count = 0;
-    }
+    if (done.has(d)) { count++; if (i <= 1) current = count; }
+    else { if (i === 0) current = 0; best = Math.max(best, count); count = 0; }
   }
-  best = Math.max(best, count, current);
-  return { current, best };
+  return { current, best: Math.max(best, count, current) };
 }
 
-// ─── HEATMAP ──────────────────────────────────────────────────────────────────
-function HeatmapCell({ date, intensity, size = 11 }) {
-  const colors = ["#E8DDD0","#A8D5BC","#5AAD85","#2A8A62","#1A6B4A","#0F4030"];
-  const c = colors[Math.min(intensity, 5)];
+// ─── TOKENS ───────────────────────────────────────────────────────────────────
+const T = {
+  bg: "#0B0B0E", text: "rgba(255,255,255,0.96)", textSec: "rgba(235,235,245,0.62)",
+  textTer: "rgba(235,235,245,0.38)", textQuat: "rgba(235,235,245,0.20)",
+  glass1: "rgba(255,255,255,0.045)", glass2: "rgba(255,255,255,0.075)",
+  stroke: "rgba(255,255,255,0.09)", innerHi: "rgba(255,255,255,0.22)",
+  accent: "oklch(0.78 0.12 160)", accentSoft: "oklch(0.78 0.12 160 / 0.18)",
+  gold: "oklch(0.82 0.11 75)", danger: "oklch(0.72 0.16 25)",
+};
+const glassStyle = { background: T.glass1, backdropFilter: "blur(28px) saturate(160%)", WebkitBackdropFilter: "blur(28px) saturate(160%)", border: "0.5px solid rgba(255,255,255,0.09)", borderRadius: 22, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.35)" };
+const glass2Style = { ...glassStyle, background: T.glass2 };
+
+// ─── ICONS ────────────────────────────────────────────────────────────────────
+const Ic = ({ d, s = 20, sw = 1.6 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
+const icPlus = (s = 18) => <Ic s={s} d="M12 5v14M5 12h14" />;
+const icCal = (s = 20) => <Ic s={s} d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" />;
+const icLeaf = (s = 20) => <Ic s={s} d="M6 20S4 12 12 4c8 0 8 8 8 8-4 0-8 2-10 5M6 20c1-3 4-5 6-5" />;
+const icChart = (s = 20) => <Ic s={s} d="M3 3v18h18M7 16l4-4 4 4 4-8" />;
+const icChevL = (s = 18) => <Ic s={s} d="M15 18l-6-6 6-6" />;
+const icChevR = (s = 18) => <Ic s={s} d="M9 18l6-6-6-6" />;
+const icFlame = (s = 14) => <Ic s={s} sw={1.8} d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072 2.143-.224 4.054 2 6 .5.5 1 1.5 1 2.5a2.5 2.5 0 01-5 0c0-1.5 1.5-2.5 2.5-3.5" />;
+const icEdit = (s = 15) => <Ic s={s} d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />;
+const icTrash = (s = 15) => <Ic s={s} d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2" />;
+const icPause = (s = 14) => <Ic s={s} d="M6 4h4v16H6zM14 4h4v16h-4" />;
+const icPlay = (s = 14) => <Ic s={s} d="M5 3l14 9-14 9V3z" />;
+
+const HABIT_ICONS = {
+  prayer: "M8 3.5C8 3.5 8 10 12 10S16 3.5 16 3.5M12 10v11M6 21h12",
+  book: "M4 19.5A2.5 2.5 0 016.5 17H20M4 19.5A2.5 2.5 0 004 22h16v-5H6.5M4 19.5V5a2 2 0 012-2h12v11H6.5",
+  run: "M13 4a1 1 0 100-2 1 1 0 000 2zM7 20l4-8 3 3 2-4M6 12l4-4 4 2 4-5",
+  cross: "M12 2v20M2 12h20",
+  code: "M16 18l6-6-6-6M8 6l-6 6 6 6",
+  meditate: "M12 3a2 2 0 100 4 2 2 0 000-4zM5 13h14M7 17c0 2 2 4 5 4s5-2 5-4",
+  leaf: "M6 20S4 12 12 4c8 0 8 8 8 8-4 0-8 2-10 5M6 20c1-3 4-5 6-5",
+  water: "M12 2.69l5.66 5.66a8 8 0 11-11.31 0z",
+  sleep: "M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z",
+  brain: "M9 3a5 5 0 00-5 5c0 1.5.6 2.8 1.6 3.8A5 5 0 009 21h6a5 5 0 004.4-7.2A5 5 0 0015 3H9z",
+  heart: "M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z",
+  music: "M9 18V5l12-2v13M9 18a3 3 0 11-6 0 3 3 0 016 0zm12-2a3 3 0 11-6 0 3 3 0 016 0z",
+  star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+  pen: "M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z",
+  target: "M22 12h-4M6 12H2M12 6V2M12 22v-4M18 12a6 6 0 11-12 0 6 6 0 0112 0zm-4 0a2 2 0 11-4 0 2 2 0 014 0z",
+};
+const ICON_NAMES = Object.keys(HABIT_ICONS);
+
+function HabitIcon({ name = "leaf", size = 22, color = T.accent, sw = 1.6 }) {
+  const d = HABIT_ICONS[name] || HABIT_ICONS.leaf;
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
+}
+
+// ─── PRIMITIVES ───────────────────────────────────────────────────────────────
+function Glass({ children, style = {}, strong = false, onClick }) {
+  return <div style={{ ...(strong ? glass2Style : glassStyle), ...style }} onClick={onClick}>{children}</div>;
+}
+
+function Ring({ value = 0, size = 110, stroke = 9, color = T.accent, children }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, dash = (value / 100) * c;
   return (
-    <div title={date} style={{
-      width: size, height: size, borderRadius: 2, backgroundColor: c,
-      display:"inline-block", margin:1, transition:"background 0.2s"
-    }} />
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={`${dash} ${c}`}
+          style={{ transition: "stroke-dasharray 0.8s cubic-bezier(0.2,0.9,0.2,1)", filter: `drop-shadow(0 0 8px ${color})` }} />
+      </svg>
+      <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column" }}>
+        {children}
+      </div>
+    </div>
   );
 }
 
-// ─── MODAL ────────────────────────────────────────────────────────────────────
+function MiniRing({ value = 0, size = 48, stroke = 2.5, color = T.accent }) {
+  const r = (size - stroke) / 2, c = 2 * Math.PI * r, dash = (Math.min(value, 100) / 100) * c;
+  return (
+    <svg width={size} height={size} style={{ transform: "rotate(-90deg)", position: "absolute", inset: -2 }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round"
+        strokeDasharray={`${dash} ${c}`}
+        style={{ transition: "stroke-dasharray 0.5s cubic-bezier(0.2,0.9,0.2,1)" }} />
+    </svg>
+  );
+}
+
+function CheckButton({ completed, partial, color, onClick, size = 44 }) {
+  const bg = completed
+    ? `linear-gradient(180deg, ${color}, ${color}cc)`
+    : partial ? `${color}38` : "rgba(255,255,255,0.06)";
+  return (
+    <button onClick={onClick} style={{
+      width: size, height: size, borderRadius: 14, border: completed ? "none" : "0.5px solid rgba(255,255,255,0.14)",
+      background: bg, cursor: "pointer", flexShrink: 0, fontFamily: "inherit",
+      boxShadow: completed ? `inset 0 1px 0 rgba(255,255,255,0.35), 0 0 18px ${color}88` : "inset 0 1px 0 rgba(255,255,255,0.18)",
+      color: completed ? "#0E1410" : T.textSec, fontSize: 20, fontWeight: 700,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      transition: "all 0.25s cubic-bezier(0.2,0.9,0.2,1)",
+    }}>
+      {completed ? "✓" : partial ? "~" : ""}
+    </button>
+  );
+}
+
+function TabBar({ tab, setTab }) {
+  return (
+    <div style={{ ...glass2Style, borderRadius: 26, padding: "6px 8px", display: "flex" }}>
+      {[{ id: "today", label: "Hoje", icon: icCal }, { id: "habits", label: "Hábitos", icon: icLeaf }, { id: "reports", label: "Relatórios", icon: icChart }].map(t => (
+        <button key={t.id} onClick={() => setTab(t.id)} style={{
+          flex: 1, padding: "9px 4px", borderRadius: 20, border: "none", cursor: "pointer", fontFamily: "inherit",
+          background: tab === t.id ? "linear-gradient(180deg,rgba(255,255,255,0.22),rgba(255,255,255,0.06))" : "transparent",
+          boxShadow: tab === t.id ? "inset 0 1px 0 rgba(255,255,255,0.3)" : "none",
+          color: tab === t.id ? T.text : T.textSec,
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+          transition: "all 0.2s cubic-bezier(0.2,0.9,0.2,1)",
+        }}>
+          {t.icon(20)}
+          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>{t.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Modal({ open, onClose, children }) {
   if (!open) return null;
   return (
-    <div style={{
-      position:"fixed", inset:0, background:"rgba(10,25,15,0.6)", zIndex:100,
-      display:"flex", alignItems:"center", justifyContent:"center", padding:16,
-      backdropFilter:"blur(4px)"
-    }} onClick={e => e.target === e.currentTarget && onClose()}>
+    <div onClick={e => e.target === e.currentTarget && onClose()} style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 100,
+      display: "flex", alignItems: "flex-end", justifyContent: "center",
+      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+    }}>
       <div style={{
-        background:CREAM, borderRadius:20, padding:28, width:"100%", maxWidth:480,
-        maxHeight:"90vh", overflowY:"auto", boxShadow:"0 24px 64px rgba(10,40,20,0.25)",
-        animation:"slideUp 0.25s ease"
+        ...glass2Style, borderRadius: "28px 28px 0 0", padding: "20px 20px 40px",
+        width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto",
+        animation: "slideUp 0.3s cubic-bezier(0.2,0.9,0.2,1)",
       }}>
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.18)", margin: "0 auto 20px" }} />
         {children}
       </div>
     </div>
@@ -170,1047 +185,578 @@ function Modal({ open, onClose, children }) {
 }
 
 // ─── HABIT FORM ───────────────────────────────────────────────────────────────
-const PRESET_EMOJIS = ["🙏","📚","🏃","💻","✝️","🧘","🥗","💪","🎯","📖","✍️","🎵","🌿","💧","😴","🧠","❤️","🌟"];
-
 function HabitForm({ habit, onSave, onCancel }) {
   const [form, setForm] = useState(habit || {
-    name:"", emoji:"🌿", category:"Espiritual", color:FOREST,
-    goalType:"time", goalValue:30, goalUnit:"min",
-    frequency:{0:true,1:true,2:true,3:true,4:true,5:true,6:true}, isActive:true
+    name: "", emoji: "leaf", category: "Espiritual", color: CAT_COLORS["Espiritual"],
+    goalType: "time", goalValue: 30, goalUnit: "min",
+    frequency: { 0: true, 1: true, 2: true, 3: true, 4: true, 5: true, 6: true }, isActive: true
   });
-  const set = (k,v) => setForm(f => ({...f, [k]:v}));
-  const toggleDay = d => setForm(f => ({...f, frequency:{...f.frequency, [d]:!f.frequency[d]}}));
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const toggleDay = d => setForm(f => ({ ...f, frequency: { ...f.frequency, [d]: !f.frequency[d] } }));
+  useEffect(() => { if (!habit) set("color", CAT_COLORS[form.category] || T.accent); }, [form.category]);
+
+  const lbl = { fontSize: 10, fontWeight: 700, color: T.textTer, textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 };
+  const inp = { width: "100%", padding: "10px 14px", borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: "inherit" };
 
   return (
     <div>
-      <h2 style={{fontFamily:"'Playfair Display',Georgia,serif", color:FOREST_DARK, fontSize:22, marginBottom:20}}>
-        {habit ? "✏️ Editar Hábito" : "✨ Novo Hábito"}
-      </h2>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 20 }}>
+        <h2 style={{ fontFamily: "inherit", fontSize: 24, fontWeight: 500, letterSpacing: "-0.03em", color: T.text, margin: 0 }}>
+          {habit ? "Editar hábito" : "Novo hábito"}
+        </h2>
+        <button onClick={onCancel} style={{ background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "6px 12px", color: T.textSec, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Fechar</button>
+      </div>
 
-      <div style={{marginBottom:16}}>
-        <label style={labelStyle}>Emoji</label>
-        <div style={{display:"flex", flexWrap:"wrap", gap:6, marginTop:6}}>
-          {PRESET_EMOJIS.map(e => (
-            <button key={e} onClick={() => set("emoji",e)} style={{
-              fontSize:22, background: form.emoji===e ? WARM : "transparent",
-              border: form.emoji===e ? `2px solid ${FOREST}` : "2px solid transparent",
-              borderRadius:8, padding:"4px 6px", cursor:"pointer", transition:"all 0.15s"
-            }}>{e}</button>
+      <Glass style={{ padding: 12, marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ width: 50, height: 50, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${form.color}44, rgba(255,255,255,0.04))`, border: "0.5px solid rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <HabitIcon name={form.emoji} size={26} color={form.color} />
+        </div>
+        <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="Nome do hábito"
+          style={{ flex: 1, border: "none", background: "transparent", fontSize: 16, color: T.text, outline: "none", fontFamily: "inherit" }} />
+      </Glass>
+
+      <div style={{ marginBottom: 14 }}>
+        <span style={lbl}>Ícone</span>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6 }}>
+          {ICON_NAMES.map(n => (
+            <button key={n} onClick={() => set("emoji", n)} style={{
+              aspectRatio: "1/1", borderRadius: 12, cursor: "pointer", border: `0.5px solid ${form.emoji === n ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.09)"}`,
+              background: form.emoji === n ? `${form.color}44` : "rgba(255,255,255,0.04)",
+              display: "flex", alignItems: "center", justifyContent: "center", padding: 8, transition: "all 0.15s",
+            }}>
+              <HabitIcon name={n} size={18} color={form.emoji === n ? form.color : "rgba(235,235,245,0.5)"} />
+            </button>
           ))}
         </div>
       </div>
 
-      <div style={{marginBottom:14}}>
-        <label style={labelStyle}>Nome</label>
-        <input value={form.name} onChange={e=>set("name",e.target.value)}
-          placeholder="Ex: Oração Matinal"
-          style={inputStyle} />
-      </div>
-
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14}}>
-        <div>
-          <label style={labelStyle}>Categoria</label>
-          <select value={form.category} onChange={e=>set("category",e.target.value)} style={inputStyle}>
-            {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-          </select>
-        </div>
-        <div>
-          <label style={labelStyle}>Cor</label>
-          <input type="color" value={form.color} onChange={e=>set("color",e.target.value)}
-            style={{...inputStyle, padding:4, height:42, cursor:"pointer"}} />
+      <div style={{ marginBottom: 14 }}>
+        <span style={lbl}>Categoria</span>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {CATEGORIES.map(c => (
+            <button key={c} onClick={() => set("category", c)} style={{
+              padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+              border: `0.5px solid ${form.category === c ? CAT_COLORS[c] : "rgba(255,255,255,0.09)"}`,
+              background: form.category === c ? `${CAT_COLORS[c]}2e` : "rgba(255,255,255,0.04)",
+              color: form.category === c ? CAT_COLORS[c] : T.textSec,
+            }}>{c}</button>
+          ))}
         </div>
       </div>
 
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:14}}>
-        <div>
-          <label style={labelStyle}>Tipo de Meta</label>
-          <select value={form.goalType} onChange={e=>{set("goalType",e.target.value); set("goalUnit",e.target.value==="time"?"min":"unid")}} style={inputStyle}>
-            <option value="time">Tempo</option>
-            <option value="numeric">Numérico</option>
-          </select>
-        </div>
-        <div>
-          <label style={labelStyle}>Meta</label>
-          <input type="number" value={form.goalValue} onChange={e=>set("goalValue",Number(e.target.value))}
-            style={inputStyle} min={1} />
-        </div>
-        <div>
-          <label style={labelStyle}>Unidade</label>
-          <input value={form.goalUnit} onChange={e=>set("goalUnit",e.target.value)}
-            placeholder="min" style={inputStyle} />
-        </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+        {[
+          { label: "Tipo", content: <select value={form.goalType} onChange={e => { set("goalType", e.target.value); set("goalUnit", e.target.value === "time" ? "min" : "unid"); }} style={inp}><option value="time">Tempo</option><option value="numeric">Numérico</option></select> },
+          { label: "Meta", content: <input type="number" value={form.goalValue} onChange={e => set("goalValue", Number(e.target.value))} style={inp} min={1} /> },
+          { label: "Unidade", content: <input value={form.goalUnit} onChange={e => set("goalUnit", e.target.value)} style={inp} /> },
+        ].map(f => <div key={f.label}><span style={lbl}>{f.label}</span>{f.content}</div>)}
       </div>
 
-      <div style={{marginBottom:20}}>
-        <label style={labelStyle}>Frequência</label>
-        <div style={{display:"flex", gap:6, marginTop:6}}>
-          {DAYS_PT.map((d,i) => (
+      <div style={{ marginBottom: 24 }}>
+        <span style={lbl}>Frequência</span>
+        <div style={{ display: "flex", gap: 5 }}>
+          {DAYS.map((d, i) => (
             <button key={i} onClick={() => toggleDay(i)} style={{
-              flex:1, padding:"8px 2px", borderRadius:8, fontSize:11, fontWeight:600,
-              border:`2px solid ${form.frequency[i] ? FOREST : WARM}`,
-              background: form.frequency[i] ? FOREST : "transparent",
-              color: form.frequency[i] ? "#fff" : BARK, cursor:"pointer",
-              transition:"all 0.15s"
-            }}>{d}</button>
+              flex: 1, padding: "9px 2px", borderRadius: 10, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
+              border: `0.5px solid ${form.frequency[i] ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)"}`,
+              background: form.frequency[i] ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.03)",
+              color: form.frequency[i] ? T.text : T.textTer,
+            }}>{d[0]}</button>
           ))}
         </div>
       </div>
 
-      <div style={{display:"flex", gap:10}}>
-        <button onClick={onCancel} style={{...btnStyle, background:WARM, color:BARK, flex:1}}>Cancelar</button>
-        <button onClick={() => form.name.trim() && onSave(form)} style={{...btnStyle, flex:2}}>
-          {habit ? "Salvar" : "Criar Hábito"}
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={onCancel} style={{ flex: 1, padding: 13, borderRadius: 14, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+        <button onClick={() => form.name.trim() && onSave(form)} style={{ flex: 2, padding: 13, borderRadius: 14, border: "none", background: `linear-gradient(180deg,${T.accent},oklch(0.65 0.12 160))`, color: "#0E1410", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 0 20px ${T.accentSoft}` }}>
+          {habit ? "Salvar" : "Criar hábito"}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── STYLES ───────────────────────────────────────────────────────────────────
-const labelStyle = { fontSize:11, fontWeight:700, color:BARK, textTransform:"uppercase", letterSpacing:"0.08em" };
-const inputStyle = {
-  width:"100%", padding:"10px 12px", borderRadius:10, border:`1.5px solid ${WARM}`,
-  background:"#fff", fontSize:14, color:SLATE, outline:"none", boxSizing:"border-box",
-  fontFamily:"inherit", marginTop:4
-};
-const btnStyle = {
-  padding:"12px 20px", borderRadius:12, border:"none", cursor:"pointer",
-  background:FOREST, color:"#fff", fontWeight:700, fontSize:14, fontFamily:"inherit",
-  transition:"all 0.2s", boxShadow:`0 4px 14px ${FOREST}44`
-};
-const cardStyle = {
-  background:"#fff", borderRadius:16, padding:16, boxShadow:"0 2px 12px rgba(10,40,20,0.08)",
-  border:`1px solid ${WARM}`
-};
+// ─── SVG CHARTS ───────────────────────────────────────────────────────────────
+const CG = "rgba(255,255,255,0.06)";
 
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
-export default function Habitus() {
-  const [habits, setHabits] = useState([]);
-  const [entries, setEntries] = useState([]);
-  const [tab, setTab] = useState("today");
-  const [reportTab, setReportTab] = useState("weekly");
-  const [selectedDate, setSelectedDate] = useState(todayStr());
-  const [modal, setModal] = useState(null); // null | 'new' | 'edit' | habitObj
-  const [editHabit, setEditHabit] = useState(null);
-  const [entryInput, setEntryInput] = useState({});
-  const [loaded, setLoaded] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
-  const [syncLog, setSyncLog] = useState([]);
-  const [showSyncLog, setShowSyncLog] = useState(false);
-
-  // ── SUPABASE LOAD ──
-  const loadFromStorage = useCallback(async (showSpinner = false) => {
-    if (showSpinner) setSyncing(true);
-    try {
-      const [habitsRaw, entriesRaw] = await Promise.all([sbGet("habits"), sbGet("entries")]);
-      setHabits(habitsRaw.map(habitFromDb));
-      setEntries(entriesRaw.map(entryFromDb));
-      setLastSync(new Date());
-    } catch(e) {
-      console.error("Erro ao carregar:", e);
-    }
-    setLoaded(true);
-    if (showSpinner) setSyncing(false);
-  }, []);
-
-  useEffect(() => { loadFromStorage(); }, []);
-
-  const saveHabit = useCallback(async (form) => {
-    if (editHabit) {
-      const updated = {...form, id:editHabit.id, createdAt:editHabit.createdAt};
-      setHabits(hs => hs.map(h => h.id === editHabit.id ? updated : h));
-      await sbUpsert("habits", [habitToDb(updated)]);
-    } else {
-      const novo = {...form, id:uuid(), createdAt:todayStr()};
-      setHabits(hs => [...hs, novo]);
-      await sbUpsert("habits", [habitToDb(novo)]);
-    }
-    setModal(null); setEditHabit(null);
-  }, [editHabit]);
-
-  const [confirmDelete, setConfirmDelete] = useState(null);
-
-  const deleteHabit = useCallback((id) => {
-    setConfirmDelete(id);
-  }, []);
-
-  const confirmDeleteHabit = useCallback(async (id) => {
-    setHabits(hs => hs.filter(h => h.id !== id));
-    setEntries(es => es.filter(e => e.habitId !== id));
-    setConfirmDelete(null);
-    await sbDelete("habits", id);
-  }, []);
-
-  const getEntry = useCallback((habitId, date) =>
-    entries.find(e => e.habitId === habitId && e.date === date), [entries]);
-
-  const toggleEntry = useCallback(async (habit, date) => {
-    const existing = entries.find(e => e.habitId === habit.id && e.date === date);
-    if (existing) {
-      if (existing.completed) {
-        setEntries(es => es.filter(e => !(e.habitId === habit.id && e.date === date)));
-        await sbDelete("entries", existing.id);
-      } else {
-        const updated = {...existing, value:habit.goalValue, completed:true};
-        setEntries(es => es.map(e => e.habitId === habit.id && e.date === date ? updated : e));
-        await sbUpsert("entries", [entryToDb(updated)]);
-      }
-    } else {
-      const novo = {id:uuid(), habitId:habit.id, date, value:habit.goalValue, completed:true};
-      setEntries(es => [...es, novo]);
-      await sbUpsert("entries", [entryToDb(novo)]);
-    }
-  }, [entries]);
-
-  const setEntryValue = useCallback(async (habit, date, value) => {
-    const num = parseFloat(value) || 0;
-    const completed = num > 0;
-    const existing = entries.find(e => e.habitId === habit.id && e.date === date);
-    if (existing) {
-      const updated = {...existing, value:num, completed};
-      setEntries(es => es.map(e => e.habitId === habit.id && e.date === date ? updated : e));
-      await sbUpsert("entries", [entryToDb(updated)]);
-    } else {
-      const novo = {id:uuid(), habitId:habit.id, date, value:num, completed};
-      setEntries(es => [...es, novo]);
-      await sbUpsert("entries", [entryToDb(novo)]);
-    }
-  }, [entries]);
-
-  const todayHabits = useMemo(() => {
-    const dow = new Date(selectedDate + "T12:00:00").getDay();
-    return habits.filter(h => h.isActive && h.frequency[dow]);
-  }, [habits, selectedDate]);
-
-  const todayCompleted = useMemo(() =>
-    todayHabits.filter(h => getEntry(h.id, selectedDate)?.completed).length,
-    [todayHabits, getEntry, selectedDate]
-  );
-
-  const totalStreak = useMemo(() =>
-    habits.reduce((sum, h) => sum + calcStreak(h.id, entries, habits).current, 0),
-    [habits, entries]
-  );
-
-  // ── RENDER ───────────────────────────────────────────────────────────────────
-  if (!loaded) return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:CREAM}}>
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:48,marginBottom:12}}>🌿</div>
-        <div style={{color:FOREST,fontFamily:"'Playfair Display',serif",fontSize:20}}>Habitus</div>
-      </div>
-    </div>
-  );
-
+function AreaChart({ data, height = 150, stroke = T.accent, fid = "af1" }) {
+  const W = 320, H = height, pL = 30, pR = 10, pT = 10, pB = 24;
+  const cW = W - pL - pR, cH = H - pT - pB, n = data.length;
+  if (n === 0) return null;
+  const xs = i => pL + (n === 1 ? cW / 2 : (i * cW) / (n - 1));
+  const ys = v => pT + cH - (Math.max(0, Math.min(100, v)) / 100) * cH;
+  const lp = data.map((d, i) => `${i === 0 ? "M" : "L"}${xs(i).toFixed(1)},${ys(d.pct).toFixed(1)}`).join(" ");
+  const fp = lp + ` L${xs(n - 1).toFixed(1)},${pT + cH} L${xs(0).toFixed(1)},${pT + cH} Z`;
   return (
-    <div style={{
-      minHeight:"100vh", background:CREAM, fontFamily:"'DM Sans',system-ui,sans-serif",
-      maxWidth:480, margin:"0 auto", position:"relative", paddingBottom:80
-    }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=DM+Sans:wght@400;500;600;700&display=swap');
-        @keyframes slideUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
-        @keyframes pop { 0%{transform:scale(1)} 50%{transform:scale(1.18)} 100%{transform:scale(1)} }
-        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
-        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-        input, select, button { font-family: 'DM Sans',system-ui,sans-serif; }
-        ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; }
-        ::-webkit-scrollbar-thumb { background:${WARM}; border-radius:4px; }
-        .habit-card:active { transform:scale(0.98); }
-        .check-btn:active { animation: pop 0.2s ease; }
-      `}</style>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+      <defs><linearGradient id={fid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={stroke} stopOpacity="0.4" /><stop offset="100%" stopColor={stroke} stopOpacity="0.02" /></linearGradient></defs>
+      {[0, 25, 50, 75, 100].map(g => <line key={g} x1={pL} y1={ys(g)} x2={W - pR} y2={ys(g)} stroke={CG} strokeDasharray="2 4" />)}
+      {[0, 50, 100].map(g => <text key={g} x={pL - 6} y={ys(g) + 3} textAnchor="end" fontSize="9" fill="rgba(235,235,245,0.4)">{g}%</text>)}
+      <path d={fp} fill={`url(#${fid})`} />
+      <path d={lp} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+      {data.map((d, i) => <circle key={i} cx={xs(i)} cy={ys(d.pct)} r="2.5" fill={stroke} />)}
+      {data.map((d, i) => { const skip = n > 16 ? Math.ceil(n / 8) : 1; if (i % skip !== 0 && i !== n - 1) return null; return <text key={i} x={xs(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="rgba(235,235,245,0.4)">{d.name}</text>; })}
+    </svg>
+  );
+}
 
-      {/* ── HEADER ── */}
-      <div style={{
-        background:`linear-gradient(135deg, ${FOREST_DARK} 0%, ${FOREST} 100%)`,
-        padding:"28px 20px 20px", color:"#fff",
-        boxShadow:"0 4px 20px rgba(10,40,20,0.25)"
-      }}>
-        <div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start"}}>
-          <div>
-            <div style={{fontSize:11, fontWeight:700, opacity:0.7, letterSpacing:"0.1em", textTransform:"uppercase", marginBottom:2}}>
-              {new Date().toLocaleDateString("pt-BR",{weekday:"long"})}
-            </div>
-            <h1 style={{fontFamily:"'Playfair Display',serif", fontSize:28, fontWeight:700, margin:0, letterSpacing:"-0.02em"}}>
-              Habitus 🌿
-            </h1>
-          </div>
-          <div style={{display:"flex", gap:8, alignItems:"center"}}>
-            <button onClick={() => { loadFromStorage(true); setShowSyncLog(true); }} title="Sincronizar" style={{
-              background:"rgba(255,255,255,0.15)", border:"none", borderRadius:12,
-              padding:"8px 10px", color:"#fff", fontSize:16, cursor:"pointer",
-              backdropFilter:"blur(8px)", opacity: syncing ? 0.6 : 1,
-              transition:"all 0.2s", display:"flex", alignItems:"center", gap:4
-            }}>
-              <span style={{display:"inline-block", animation: syncing ? "spin 1s linear infinite" : "none"}}>⟳</span>
-              {lastSync && <span style={{fontSize:10, opacity:0.75}}>{lastSync.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span>}
-            </button>
-            <button onClick={() => {setEditHabit(null); setModal("form");}} style={{
-              background:"rgba(255,255,255,0.15)", border:"none", borderRadius:12,
-              padding:"8px 14px", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer",
-              backdropFilter:"blur(8px)"
-            }}>+ Novo</button>
-          </div>
-        </div>
+function HBarChart({ data }) {
+  const rH = 28, gap = 6, lW = 96, W = 320, pW = 40;
+  const bMax = W - lW - pW - 8, H = data.length * (rH + gap) + 8;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+      {data.map((d, i) => { const y = 4 + i * (rH + gap), bw = Math.max(2, (d.pct / 100) * bMax); return (
+        <g key={i}>
+          <text x={lW - 8} y={y + rH / 2 + 4} textAnchor="end" fontSize="11" fontWeight="500" fill="rgba(235,235,245,0.75)">{d.name}</text>
+          <rect x={lW} y={y + 6} width={bMax} height={rH - 12} fill="rgba(255,255,255,0.04)" rx="6" />
+          <rect x={lW} y={y + 6} width={bw} height={rH - 12} fill={d.color} rx="6" opacity="0.9" />
+          <text x={W - 4} y={y + rH / 2 + 4} textAnchor="end" fontSize="10.5" fill="rgba(235,235,245,0.8)">{d.pct}%</text>
+        </g>
+      ); })}
+    </svg>
+  );
+}
 
-        {/* KPIs */}
-        <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginTop:18}}>
-          {[
-            { label:"Hoje", value:`${todayCompleted}/${todayHabits.length}`, icon:"✅" },
-            { label:"Streaks", value:totalStreak, icon:"🔥" },
-            { label:"Hábitos", value:habits.filter(h=>h.isActive).length, icon:"🌿" },
-          ].map(k => (
-            <div key={k.label} style={{
-              background:"rgba(255,255,255,0.12)", borderRadius:12, padding:"10px 12px",
-              backdropFilter:"blur(8px)"
-            }}>
-              <div style={{fontSize:16}}>{k.icon}</div>
-              <div style={{fontSize:18, fontWeight:700, lineHeight:1.2}}>{k.value}</div>
-              <div style={{fontSize:10, opacity:0.7, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.06em"}}>{k.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── SYNC LOG (debug) ── */}
-      {showSyncLog && (
-        <div style={{background:"#0F1F15", padding:"10px 16px", fontSize:11, fontFamily:"monospace", color:"#7FD9A8"}}>
-          <div style={{display:"flex", justifyContent:"space-between", marginBottom:6}}>
-            <span style={{fontWeight:700, color:"#fff"}}>🔍 Diagnóstico de Sync</span>
-            <button onClick={()=>setShowSyncLog(false)} style={{background:"none",border:"none",color:"#7FD9A8",cursor:"pointer",fontSize:14}}>✕</button>
-          </div>
-          {syncLog.length === 0 && <div style={{opacity:0.6}}>Nenhum evento ainda...</div>}
-          {syncLog.map((l,i) => <div key={i} style={{opacity:1-i*0.15, marginBottom:2}}>{l}</div>)}
-        </div>
-      )}
-
-      {/* ── NAV ── */}
-      <div style={{
-        display:"flex", background:"#fff", borderBottom:`2px solid ${WARM}`,
-        position:"sticky", top:0, zIndex:10, boxShadow:"0 2px 8px rgba(10,40,20,0.06)"
-      }}>
-        {[
-          {id:"today",label:"Hoje",icon:"📅"},
-          {id:"habits",label:"Hábitos",icon:"🌿"},
-          {id:"reports",label:"Relatórios",icon:"📈"},
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex:1, padding:"12px 4px", border:"none", background:"transparent",
-            color: tab===t.id ? FOREST : BARK, fontWeight: tab===t.id ? 700 : 500,
-            fontSize:12, cursor:"pointer", borderBottom: tab===t.id ? `3px solid ${FOREST}` : "3px solid transparent",
-            transition:"all 0.15s", display:"flex", flexDirection:"column", alignItems:"center", gap:2
-          }}>
-            <span style={{fontSize:16}}>{t.icon}</span>{t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ── CONTENT ── */}
-      <div style={{padding:"16px 16px 0", animation:"fadeIn 0.25s ease"}}>
-
-        {/* TODAY TAB */}
-        {tab === "today" && <TodayTab
-          habits={todayHabits} allHabits={habits} entries={entries}
-          selectedDate={selectedDate} setSelectedDate={setSelectedDate}
-          getEntry={getEntry} toggleEntry={toggleEntry} setEntryValue={setEntryValue}
-          entryInput={entryInput} setEntryInput={setEntryInput}
-          calcStreak={calcStreak}
-        />}
-
-        {/* HABITS TAB */}
-        {tab === "habits" && <HabitsTab
-          habits={habits} entries={entries} calcStreak={calcStreak}
-          onEdit={(h) => { setEditHabit(h); setModal("form"); }}
-          onDelete={deleteHabit}
-          confirmDelete={confirmDelete}
-          onConfirmDelete={confirmDeleteHabit}
-          onCancelDelete={() => setConfirmDelete(null)}
-          onToggleActive={async (id) => {
-            const updated = habits.map(h => h.id===id ? {...h,isActive:!h.isActive} : h);
-            setHabits(updated);
-            await sbUpsert("habits", [habitToDb(updated.find(h=>h.id===id))]);
-          }}
-        />}
-
-        {/* REPORTS TAB */}
-        {tab === "reports" && <ReportsTab
-          habits={habits} entries={entries} reportTab={reportTab} setReportTab={setReportTab}
-        />}
-      </div>
-
-      {/* ── MODAL ── */}
-      <Modal open={modal === "form"} onClose={() => {setModal(null); setEditHabit(null);}}>
-        <HabitForm habit={editHabit} onSave={saveHabit} onCancel={() => {setModal(null); setEditHabit(null);}} />
-      </Modal>
-    </div>
+function VBarChart({ data, height = 180 }) {
+  const W = 320, H = height, pL = 30, pR = 10, pT = 10, pB = 24;
+  const cW = W - pL - pR, cH = H - pT - pB, n = data.length, step = cW / n;
+  const bw = Math.max(4, Math.min(22, step * 0.6));
+  const ys = v => pT + cH - (Math.max(0, Math.min(100, v)) / 100) * cH;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: "block" }}>
+      {[0, 25, 50, 75, 100].map(g => <line key={g} x1={pL} y1={ys(g)} x2={W - pR} y2={ys(g)} stroke={CG} strokeDasharray="2 4" />)}
+      {[0, 50, 100].map(g => <text key={g} x={pL - 6} y={ys(g) + 3} textAnchor="end" fontSize="9" fill="rgba(235,235,245,0.4)">{g}%</text>)}
+      {data.map((d, i) => { const cx = pL + step * (i + 0.5), bh = (d.pct / 100) * cH; return (
+        <g key={i}>
+          <rect x={cx - bw / 2} y={pT + cH - bh} width={bw} height={bh} fill={d.color || T.accent} rx="4" opacity="0.9" />
+          <text x={cx} y={H - 6} textAnchor="middle" fontSize="9" fill="rgba(235,235,245,0.4)">{d.month || d.name}</text>
+        </g>
+      ); })}
+    </svg>
   );
 }
 
 // ─── TODAY TAB ────────────────────────────────────────────────────────────────
-function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, getEntry, toggleEntry, setEntryValue, entryInput, setEntryInput, calcStreak }) {
+function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, getEntry, toggleEntry, setEntryValue }) {
   const today = todayStr();
-  const dates = Array.from({length:7}, (_,i) => dateStr(addDays(new Date(), -6+i)));
+  const dates = Array.from({ length: 7 }, (_, i) => dateStr(addDays(new Date(), -6 + i)));
+  const done = habits.filter(h => getEntry(h.id, selectedDate)?.completed).length;
+  const pct = habits.length > 0 ? Math.round((done / habits.length) * 100) : 0;
+  const selDate = new Date(selectedDate + "T12:00:00");
+  const selLabel = selDate.toDateString() === new Date().toDateString() ? "Hoje" : selDate.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
+  const [inputs, setInputs] = useState({});
+  const [showUnplanned, setShowUnplanned] = useState(false);
+
+  // Habits not scheduled for this day and without an entry yet
+  const unplannedAvailable = allHabits.filter(h => {
+    const dow = new Date(selectedDate + "T12:00:00").getDay();
+    return h.isActive && !h.frequency[dow] && !getEntry(h.id, selectedDate);
+  });
 
   return (
-    <div>
-      {/* Date strip */}
-      <div style={{display:"flex", gap:6, marginBottom:20, overflowX:"auto", paddingBottom:4}}>
+    <div style={{ padding: "0 16px 120px" }}>
+      <Glass style={{ padding: 20, marginBottom: 14, display: "flex", gap: 18, alignItems: "center" }}>
+        <Ring value={pct} size={110} stroke={9} color={T.accent}>
+          <div style={{ fontSize: 26, fontWeight: 500, color: T.text, lineHeight: 1, letterSpacing: "-0.04em" }}>{pct}<span style={{ fontSize: 13, opacity: 0.5 }}>%</span></div>
+          <div style={{ fontSize: 9, marginTop: 3, color: T.textTer, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em" }}>do dia</div>
+        </Ring>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, color: T.textTer, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{selLabel}</div>
+          <div style={{ fontSize: 28, fontWeight: 400, letterSpacing: "-0.03em", color: T.text, lineHeight: 1.15 }}>
+            {done} de {habits.length}<br />
+            <span style={{ fontSize: 22, color: T.textSec, fontStyle: "italic" }}>hábitos feitos</span>
+          </div>
+          {pct === 100 && habits.length > 0 && <div style={{ fontSize: 12, color: T.gold, fontWeight: 600, marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}>{icFlame(12)} Dia completo!</div>}
+        </div>
+      </Glass>
+
+      <div style={{ display: "flex", gap: 7, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
         {dates.map(d => {
-          const wd = new Date(d+"T12:00:00");
-          const dow = wd.getDay();
-          const dayHabits = allHabits.filter(h => h.isActive && h.frequency[dow]);
-          const done = dayHabits.filter(h => getEntry(h.id, d)?.completed).length;
-          const isToday = d === today;
-          const isSel = d === selectedDate;
+          const wd = new Date(d + "T12:00:00"), dow = wd.getDay();
+          const dh = allHabits.filter(h => h.isActive && h.frequency[dow]);
+          const dn = dh.filter(h => getEntry(h.id, d)?.completed).length;
+          const isSel = d === selectedDate, p = dh.length > 0 ? dn / dh.length : 0;
           return (
             <button key={d} onClick={() => setSelectedDate(d)} style={{
-              flex:"0 0 auto", width:52, padding:"10px 4px", borderRadius:14,
-              border:`2px solid ${isSel ? FOREST : "transparent"}`,
-              background: isSel ? FOREST : isToday ? `${FOREST}15` : "transparent",
-              color: isSel ? "#fff" : SLATE, cursor:"pointer", textAlign:"center",
-              transition:"all 0.15s"
+              flex: "0 0 auto", width: 50, padding: "10px 4px", borderRadius: 16, cursor: "pointer", textAlign: "center", fontFamily: "inherit",
+              border: `0.5px solid ${isSel ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.08)"}`,
+              background: isSel ? "linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.05))" : "rgba(255,255,255,0.04)",
+              boxShadow: isSel ? "inset 0 1px 0 rgba(255,255,255,0.3),0 6px 16px rgba(0,0,0,0.25)" : "none",
+              color: isSel ? T.text : T.textSec, transition: "all 0.2s",
             }}>
-              <div style={{fontSize:10, fontWeight:700, opacity: isSel ? 0.8 : 0.6, textTransform:"uppercase", letterSpacing:"0.05em"}}>
-                {DAYS_PT[dow]}
-              </div>
-              <div style={{fontSize:20, fontWeight:700, lineHeight:1.3}}>
-                {wd.getDate()}
-              </div>
-              {dayHabits.length > 0 && (
-                <div style={{
-                  width:done===dayHabits.length ? 8 : 6, height:done===dayHabits.length ? 8 : 6,
-                  borderRadius:"50%", background: done===dayHabits.length ? (isSel?"#fff":GOLD) : (isSel?"rgba(255,255,255,0.4)":WARM),
-                  margin:"3px auto 0", transition:"all 0.2s"
-                }} />
-              )}
+              <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.6 }}>{DAYS[dow]}</div>
+              <div style={{ fontSize: 19, fontWeight: 600, lineHeight: 1.3 }}>{wd.getDate()}</div>
+              <div style={{ width: p > 0 ? 20 : 14, height: 3, borderRadius: 2, margin: "3px auto 0", transition: "all 0.3s", background: p === 1 ? T.gold : p > 0 ? T.accent : "rgba(255,255,255,0.08)" }} />
             </button>
           );
         })}
       </div>
 
-      {/* Progress bar */}
-      {habits.length > 0 && (
-        <div style={{...cardStyle, marginBottom:16, padding:"14px 16px"}}>
-          <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8}}>
-            <span style={{fontSize:13, fontWeight:600, color:BARK}}>Progresso do dia</span>
-            <span style={{fontSize:13, fontWeight:700, color:FOREST}}>
-              {habits.filter(h=>getEntry(h.id,selectedDate)?.completed).length}/{habits.length}
-            </span>
-          </div>
-          <div style={{height:8, background:WARM, borderRadius:4, overflow:"hidden"}}>
-            <div style={{
-              height:"100%", borderRadius:4, background:`linear-gradient(90deg,${FOREST_LIGHT},${FOREST})`,
-              width:`${habits.length ? (habits.filter(h=>getEntry(h.id,selectedDate)?.completed).length/habits.length*100) : 0}%`,
-              transition:"width 0.5s ease"
-            }} />
-          </div>
-        </div>
-      )}
-
-      {/* Habit cards */}
-      <div style={{display:"flex", flexDirection:"column", gap:10}}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {habits.length === 0 ? (
-          <div style={{...cardStyle, textAlign:"center", padding:32, color:BARK}}>
-            <div style={{fontSize:40, marginBottom:8}}>🌱</div>
-            <div style={{fontSize:15, fontWeight:600}}>Nenhum hábito para hoje</div>
-            <div style={{fontSize:13, opacity:0.7, marginTop:4}}>Toque em "+ Novo" para começar</div>
-          </div>
-        ) : habits.map(h => {
+          <Glass style={{ padding: 40, textAlign: "center" }}>
+            <div style={{ fontSize: 32, marginBottom: 10 }}>{icLeaf(32)}</div>
+            <div style={{ color: T.textSec, fontSize: 15 }}>Nenhum hábito para hoje</div>
+          </Glass>
+        ) : habits.map((h, idx) => {
           const entry = getEntry(h.id, selectedDate);
           const streak = calcStreak(h.id, entries, allHabits);
-          const pct = entry ? Math.min((entry.value / h.goalValue) * 100, 100) : 0;
+          const pctH = entry ? Math.min((entry.value / h.goalValue) * 100, 100) : 0;
           const key = `${h.id}-${selectedDate}`;
           return (
-            <div key={h.id} className="habit-card" style={{
-              ...cardStyle, display:"flex", alignItems:"center", gap:12,
-              borderLeft:`4px solid ${h.color}`,
-              background: entry?.completed ? `${h.color}08` : "#fff",
-              transition:"all 0.2s"
-            }}>
-              <div style={{fontSize:28, flexShrink:0}}>{h.emoji}</div>
-              <div style={{flex:1, minWidth:0}}>
-                <div style={{fontWeight:700, fontSize:15, color:SLATE, marginBottom:2}}>{h.name}</div>
-                <div style={{display:"flex", alignItems:"center", gap:8}}>
-                  <div style={{flex:1, height:5, background:WARM, borderRadius:3, overflow:"hidden"}}>
-                    <div style={{
-                      height:"100%", background:h.color, borderRadius:3,
-                      width:`${pct}%`, transition:"width 0.4s ease"
-                    }} />
-                  </div>
-                  <span style={{fontSize:11, color:BARK, fontWeight:600, flexShrink:0}}>
-                    {entry ? entry.value : 0}/{h.goalValue} {h.goalUnit}
-                  </span>
+            <Glass key={h.id} style={{ padding: "14px 14px 14px 18px", display: "flex", alignItems: "center", gap: 12, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: 2, background: h.color, boxShadow: `0 0 8px ${h.color}`, opacity: 0.8 }} />
+              <div style={{ position: "relative", flexShrink: 0 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${h.color}4a, rgba(255,255,255,0.03))`, border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <HabitIcon name={h.emoji} size={22} color={h.color} />
                 </div>
-                {streak.current > 0 && (
-                  <div style={{fontSize:11, color:GOLD, fontWeight:700, marginTop:3}}>
-                    🔥 {streak.current} dias
-                  </div>
-                )}
+                {pctH > 0 && <MiniRing value={pctH} size={48} stroke={2.5} color={h.color} />}
               </div>
-              <div style={{display:"flex", flexDirection:"column", gap:4, flexShrink:0, alignItems:"center"}}>
-                {h.goalType === "time" ? (
-                  <>
-                    <div style={{display:"flex", alignItems:"center", gap:4}}>
-                      <input
-                        type="number"
-                        value={entryInput[key] !== undefined ? entryInput[key] : (entry?.value || "")}
-                        onChange={e => {
-                          setEntryInput(i => ({...i, [key]: e.target.value}));
-                          if (e.target.value) setEntryValue(h, selectedDate, e.target.value);
-                        }}
-                        placeholder="0"
-                        style={{
-                          width:52, padding:"6px 6px", borderRadius:8, border:`1.5px solid ${WARM}`,
-                          fontSize:12, textAlign:"center", background:"#fff", color:SLATE, outline:"none"
-                        }}
-                      />
-                      <span style={{fontSize:10, color:BARK, fontWeight:600}}>{h.goalUnit}</span>
-                    </div>
-                    <button className="check-btn" onClick={() => toggleEntry(h, selectedDate)} style={{
-                      width:42, height:42, borderRadius:12, border:"none", cursor:"pointer",
-                      background: entry?.completed ? h.color : entry?.value > 0 ? `${h.color}55` : WARM,
-                      color: entry?.completed || entry?.value > 0 ? "#fff" : BARK,
-                      fontSize:20, display:"flex", alignItems:"center", justifyContent:"center",
-                      transition:"all 0.2s", boxShadow: entry?.completed ? `0 4px 12px ${h.color}55` : "none"
-                    }}>
-                      {entry?.completed ? "✓" : entry?.value > 0 ? "~" : "○"}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    {h.goalType === "numeric" && (
-                      <input
-                        type="number"
-                        value={entryInput[key] !== undefined ? entryInput[key] : (entry?.value || "")}
-                        onChange={e => {
-                          setEntryInput(i => ({...i, [key]: e.target.value}));
-                          if (e.target.value) setEntryValue(h, selectedDate, e.target.value);
-                        }}
-                        placeholder={h.goalValue}
-                        style={{
-                          width:60, padding:"6px 8px", borderRadius:8, border:`1.5px solid ${WARM}`,
-                          fontSize:12, textAlign:"center", background:"#fff", color:SLATE, outline:"none"
-                        }}
-                      />
-                    )}
-                    <button className="check-btn" onClick={() => toggleEntry(h, selectedDate)} style={{
-                      width:42, height:42, borderRadius:12, border:"none", cursor:"pointer",
-                      background: entry?.completed ? h.color : WARM,
-                      color: entry?.completed ? "#fff" : BARK,
-                      fontSize:20, display:"flex", alignItems:"center", justifyContent:"center",
-                      transition:"all 0.2s", boxShadow: entry?.completed ? `0 4px 12px ${h.color}55` : "none"
-                    }}>
-                      {entry?.completed ? "✓" : "○"}
-                    </button>
-                  </>
-                )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: T.text, letterSpacing: "-0.01em" }}>{h.name}</div>
+                  {!allHabits.find(ah => ah.id === h.id)?.frequency[new Date(selectedDate + "T12:00:00").getDay()] && (
+                    <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 6, background: "rgba(255,255,255,0.08)", color: T.textTer, textTransform: "uppercase", letterSpacing: "0.06em", flexShrink: 0 }}>extra</span>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: T.textTer }}>{entry ? entry.value : 0}/{h.goalValue} {h.goalUnit}</span>
+                  {streak.current > 0 && <span style={{ fontSize: 11, color: T.gold, fontWeight: 600, display: "flex", alignItems: "center", gap: 3 }}>{icFlame(11)}{streak.current}d</span>}
+                </div>
               </div>
-            </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", flexShrink: 0 }}>
+                <input type="number"
+                  value={inputs[key] !== undefined ? inputs[key] : (entry?.value || "")}
+                  onChange={e => { setInputs(i => ({ ...i, [key]: e.target.value })); if (e.target.value) setEntryValue(h, selectedDate, e.target.value); }}
+                  placeholder={String(h.goalValue)}
+                  style={{ width: 54, padding: 6, borderRadius: 9, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", fontSize: 12, textAlign: "center", color: T.text, outline: "none", fontFamily: "inherit" }}
+                />
+                <CheckButton completed={!!entry?.completed} partial={entry?.value > 0 && !entry?.completed} color={h.color} onClick={() => toggleEntry(h, selectedDate)} />
+              </div>
+            </Glass>
           );
         })}
       </div>
+
+      {/* Add unplanned habit button */}
+      {unplannedAvailable.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <button onClick={() => setShowUnplanned(!showUnplanned)} style={{
+            width: "100%", padding: "12px 16px", borderRadius: 16, cursor: "pointer", fontFamily: "inherit",
+            border: "0.5px dashed rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.03)",
+            color: T.textSec, fontWeight: 600, fontSize: 13,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            transition: "all 0.2s",
+          }}>
+            {icPlus(15)}
+            {showUnplanned ? "Fechar" : "Adicionar hábito não planejado"}
+          </button>
+
+          {showUnplanned && (
+            <Glass style={{ marginTop: 10, padding: 14 }}>
+              <div style={{ fontSize: 11, color: T.textTer, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
+                Selecione para adicionar ao dia
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {unplannedAvailable.map(h => (
+                  <button key={h.id} onClick={() => {
+                    toggleEntry(h, selectedDate);
+                    setShowUnplanned(false);
+                  }} style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
+                    borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                    border: "0.5px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.04)",
+                    transition: "all 0.15s", textAlign: "left",
+                  }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 11, background: `${h.color}4a`, border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <HabitIcon name={h.emoji} size={18} color={h.color} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>{h.name}</div>
+                      <div style={{ fontSize: 11, color: T.textTer, marginTop: 2 }}>{h.goalValue} {h.goalUnit} · {h.category}</div>
+                    </div>
+                    <div style={{ fontSize: 11, color: T.accent, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                      {icPlus(13)} Adicionar
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Glass>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── HABITS TAB ───────────────────────────────────────────────────────────────
-function HabitsTab({ habits, entries, calcStreak, onEdit, onDelete, confirmDelete, onConfirmDelete, onCancelDelete, onToggleActive }) {
+function HabitsTab({ habits, entries, onEdit, onDelete, confirmDelete, onConfirmDelete, onCancelDelete, onToggleActive }) {
   const [filter, setFilter] = useState("Todos");
-  const cats = ["Todos", ...CATEGORIES.filter(c => habits.some(h=>h.category===c))];
-  const filtered = filter === "Todos" ? habits : habits.filter(h=>h.category===filter);
-
+  const cats = ["Todos", ...CATEGORIES.filter(c => habits.some(h => h.category === c))];
+  const filtered = filter === "Todos" ? habits : habits.filter(h => h.category === filter);
   return (
-    <div>
-      <div style={{display:"flex", gap:8, marginBottom:16, overflowX:"auto", paddingBottom:4}}>
+    <div style={{ padding: "0 16px 120px" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto", paddingBottom: 2 }}>
         {cats.map(c => (
           <button key={c} onClick={() => setFilter(c)} style={{
-            flexShrink:0, padding:"7px 14px", borderRadius:20, border:"none",
-            background: filter===c ? FOREST : WARM, color: filter===c ? "#fff" : BARK,
-            fontWeight:600, fontSize:12, cursor:"pointer", transition:"all 0.15s"
+            flexShrink: 0, padding: "7px 14px", borderRadius: 999, fontWeight: 600, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.15s",
+            border: `0.5px solid ${filter === c ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.09)"}`,
+            background: filter === c ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
+            color: filter === c ? T.text : T.textSec,
           }}>{c}</button>
         ))}
       </div>
-
-      <div style={{display:"flex", flexDirection:"column", gap:10}}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {filtered.map(h => {
           const streak = calcStreak(h.id, entries, habits);
-          const last7 = Array.from({length:7},(_,i)=>dateStr(addDays(new Date(),-6+i)));
-          const done7 = last7.filter(d => {
-            const dow = new Date(d+"T12:00:00").getDay();
-            return h.frequency[dow] && entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed);
-          }).length;
-          const expected7 = last7.filter(d => h.frequency[new Date(d+"T12:00:00").getDay()]).length;
+          const last7 = Array.from({ length: 7 }, (_, i) => dateStr(addDays(new Date(), -6 + i)));
+          const done7 = last7.filter(d => { const dow = new Date(d + "T12:00:00").getDay(); return h.frequency[dow] && entries.find(e => e.habitId === h.id && e.date === d && e.completed); }).length;
+          const exp7 = last7.filter(d => h.frequency[new Date(d + "T12:00:00").getDay()]).length;
+          const conf = confirmDelete === h.id;
           return (
-            <div key={h.id} style={{...cardStyle, borderLeft:`4px solid ${h.color}`, opacity: h.isActive ? 1 : 0.5}}>
-              <div style={{display:"flex", alignItems:"center", gap:12}}>
-                <div style={{fontSize:28}}>{h.emoji}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700, fontSize:15, color:SLATE}}>{h.name}</div>
-                  <div style={{display:"flex", gap:8, marginTop:3, flexWrap:"wrap"}}>
-                    <span style={{
-                      fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:10,
-                      background:`${CAT_COLORS[h.category] || FOREST}20`,
-                      color: CAT_COLORS[h.category] || FOREST
-                    }}>{h.category}</span>
-                    <span style={{fontSize:11, color:BARK}}>
-                      Meta: {h.goalValue} {h.goalUnit}
-                    </span>
+            <Glass key={h.id} style={{ padding: "14px 14px 14px 18px", opacity: h.isActive ? 1 : 0.55, position: "relative", overflow: "hidden" }}>
+              <div style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: 2, background: h.color, opacity: 0.7, boxShadow: `0 0 8px ${h.color}` }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${h.color}4a, rgba(255,255,255,0.03))`, border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <HabitIcon name={h.emoji} size={22} color={h.color} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: T.text, letterSpacing: "-0.01em" }}>{h.name}</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 3, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 600, padding: "2px 8px", borderRadius: 999, background: `${h.color}28`, color: h.color }}>{h.category}</span>
+                    <span style={{ fontSize: 11, color: T.textTer }}>{h.goalValue} {h.goalUnit}</span>
                   </div>
                 </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:14, fontWeight:700, color:GOLD}}>🔥 {streak.current}</div>
-                  <div style={{fontSize:10, color:BARK}}>melhor: {streak.best}</div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 18, fontWeight: 600, color: T.gold, display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>{icFlame(14)}{streak.current}</div>
+                  <div style={{ fontSize: 10, color: T.textTer, marginTop: 2 }}>best {streak.best}</div>
                 </div>
               </div>
-
-              {/* Mini heatmap last 7 days */}
-              <div style={{display:"flex", gap:3, marginTop:12, alignItems:"center"}}>
-                <span style={{fontSize:10, color:BARK, marginRight:4, fontWeight:600}}>7 dias:</span>
+              <div style={{ display: "flex", gap: 3, alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 9, color: T.textTer, fontWeight: 700, marginRight: 4 }}>7d</span>
                 {last7.map(d => {
-                  const dow = new Date(d+"T12:00:00").getDay();
-                  const inFreq = h.frequency[dow];
-                  const e = entries.find(e=>e.habitId===h.id&&e.date===d);
-                  return (
-                    <div key={d} style={{
-                      width:24, height:24, borderRadius:5,
-                      background: !inFreq ? "#F0EAE0" : e?.completed ? h.color : e ? `${h.color}50` : WARM,
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:9, color: e?.completed ? "#fff" : BARK,
-                      fontWeight:700, transition:"background 0.2s"
-                    }}>
-                      {new Date(d+"T12:00:00").getDate()}
-                    </div>
-                  );
+                  const dow = new Date(d + "T12:00:00").getDay(), inF = h.frequency[dow], e = entries.find(e => e.habitId === h.id && e.date === d);
+                  return <div key={d} style={{ width: 24, height: 24, borderRadius: 6, background: !inF ? "rgba(255,255,255,0.02)" : e?.completed ? h.color : e?.value > 0 ? `${h.color}55` : "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 700, color: e?.completed ? "#0E1410" : T.textQuat }}>{new Date(d + "T12:00:00").getDate()}</div>;
                 })}
-                <span style={{fontSize:11, color:FOREST, fontWeight:700, marginLeft:4}}>
-                  {expected7 > 0 ? Math.round(done7/expected7*100) : 0}%
-                </span>
+                <span style={{ fontSize: 11, color: T.accent, fontWeight: 700, marginLeft: 4 }}>{exp7 > 0 ? Math.round(done7 / exp7 * 100) : 0}%</span>
               </div>
-
-              <div style={{display:"flex", gap:8, marginTop:12}}>
-                <button onClick={() => onToggleActive(h.id)} style={{
-                  ...btnStyle, flex:1, padding:"8px", fontSize:12,
-                  background: h.isActive ? WARM : FOREST, color: h.isActive ? BARK : "#fff",
-                  boxShadow:"none"
-                }}>
-                  {h.isActive ? "Pausar" : "Ativar"}
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => onToggleActive(h.id)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  {h.isActive ? icPause() : icPlay()} {h.isActive ? "Pausar" : "Ativar"}
                 </button>
-                <button onClick={() => onEdit(h)} style={{...btnStyle, flex:1, padding:"8px", fontSize:12, background:FOREST}}>
-                  Editar
+                <button onClick={() => onEdit(h)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  {icEdit()} Editar
                 </button>
-                {confirmDelete === h.id ? (
+                {conf ? (
                   <>
-                    <button onClick={() => onConfirmDelete(h.id)} style={{...btnStyle, padding:"8px 12px", fontSize:12, background:"#E63946", boxShadow:"none"}}>
-                      Confirmar
-                    </button>
-                    <button onClick={onCancelDelete} style={{...btnStyle, padding:"8px 12px", fontSize:12, background:WARM, color:BARK, boxShadow:"none"}}>
-                      Cancelar
-                    </button>
+                    <button onClick={() => onConfirmDelete(h.id)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "none", background: "rgba(220,53,69,0.25)", color: T.danger, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Confirmar</button>
+                    <button onClick={onCancelDelete} style={{ padding: "8px 12px", borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
                   </>
                 ) : (
-                  <button onClick={() => onDelete(h.id)} style={{...btnStyle, padding:"8px 14px", fontSize:12, background:"#E6394620", color:"#E63946", boxShadow:"none"}}>
-                    🗑
-                  </button>
+                  <button onClick={() => onDelete(h.id)} style={{ padding: "8px 14px", borderRadius: 12, border: `0.5px solid ${T.danger}44`, background: `${T.danger}14`, color: T.danger, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}>{icTrash()}</button>
                 )}
               </div>
-            </div>
+            </Glass>
           );
         })}
-        {filtered.length === 0 && (
-          <div style={{textAlign:"center", padding:40, color:BARK}}>
-            <div style={{fontSize:36}}>🌱</div>
-            <div style={{marginTop:8, fontWeight:600}}>Nenhum hábito nesta categoria</div>
-          </div>
-        )}
+        {filtered.length === 0 && <Glass style={{ padding: 40, textAlign: "center" }}><div style={{ color: T.textSec, fontSize: 15 }}>Nenhum hábito nesta categoria</div></Glass>}
       </div>
-    </div>
-  );
-}
-
-// ─── REPORTS TAB ──────────────────────────────────────────────────────────────
-function ReportsTab({ habits, entries, reportTab, setReportTab }) {
-  return (
-    <div>
-      <div style={{display:"flex", gap:8, marginBottom:20}}>
-        {[{id:"weekly",label:"Semanal"},{id:"monthly",label:"Mensal"},{id:"annual",label:"Anual"}].map(t => (
-          <button key={t.id} onClick={() => setReportTab(t.id)} style={{
-            flex:1, padding:"10px", borderRadius:12, border:"none",
-            background: reportTab===t.id ? FOREST : WARM,
-            color: reportTab===t.id ? "#fff" : BARK,
-            fontWeight:700, fontSize:13, cursor:"pointer", transition:"all 0.15s"
-          }}>{t.label}</button>
-        ))}
-      </div>
-
-      {reportTab === "weekly" && <WeeklyReport habits={habits} entries={entries} />}
-      {reportTab === "monthly" && <MonthlyReport habits={habits} entries={entries} />}
-      {reportTab === "annual" && <AnnualReport habits={habits} entries={entries} />}
     </div>
   );
 }
 
 // ─── WEEKLY REPORT ────────────────────────────────────────────────────────────
 function WeeklyReport({ habits, entries }) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const start = startOfWeek(addDays(new Date(), weekOffset * 7));
-  const days = Array.from({length:7}, (_,i) => addDays(start, i));
+  const [offset, setOffset] = useState(0);
+  const start = startOfWeek(addDays(new Date(), offset * 7));
+  const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
   const dayStrs = days.map(dateStr);
-
-  const barData = habits.filter(h=>h.isActive).map(h => {
-    let done = 0, total = 0;
-    dayStrs.forEach(d => {
-      const dow = new Date(d+"T12:00:00").getDay();
-      if (!h.frequency[dow]) return;
-      total++;
-      if (entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)) done++;
+  const active = habits.filter(h => h.isActive);
+  const barData = active.map(h => {
+    let d = 0, t = 0;
+    dayStrs.forEach(ds => {
+      const dow = new Date(ds + "T12:00:00").getDay();
+      const hasEntry = entries.find(e => e.habitId === h.id && e.date === ds);
+      if (!h.frequency[dow] && !hasEntry) return; // skip if not scheduled AND no entry
+      t++;
+      if (hasEntry?.completed) d++;
     });
-    return { name: h.emoji + " " + h.name.split(" ")[0], done, total, pct: total>0?Math.round(done/total*100):0, color:h.color };
+    return { name: h.name.split(" ")[0], pct: t > 0 ? Math.round(d / t * 100) : 0, color: h.color };
   });
-
-  const lineData = dayStrs.map((d,i) => {
+  const lineData = dayStrs.map((ds, i) => {
     const dow = days[i].getDay();
-    const dayHabits = habits.filter(h=>h.isActive&&h.frequency[dow]);
-    const done = dayHabits.filter(h=>entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)).length;
-    return { name: DAYS_PT[dow], done, total: dayHabits.length, pct: dayHabits.length>0?Math.round(done/dayHabits.length*100):0 };
+    // Count scheduled + any habit with an entry that day (unplanned)
+    const dayHabitIds = new Set([
+      ...active.filter(h => h.frequency[dow]).map(h => h.id),
+      ...entries.filter(e => e.date === ds).map(e => e.habitId)
+    ]);
+    const total = dayHabitIds.size;
+    const dn = [...dayHabitIds].filter(id => entries.find(e => e.habitId === id && e.date === ds && e.completed)).length;
+    return { name: DAYS[dow], pct: total > 0 ? Math.round(dn / total * 100) : 0 };
   });
-
-  const weekLabel = `${days[0].getDate()}/${days[0].getMonth()+1} – ${days[6].getDate()}/${days[6].getMonth()+1}`;
+  const avg = Math.round(lineData.reduce((s, d) => s + d.pct, 0) / 7);
+  const bestI = lineData.reduce((b, d, i) => d.pct > lineData[b].pct ? i : b, 0);
+  const weekLabel = `${days[0].getDate()}/${days[0].getMonth() + 1} – ${days[6].getDate()}/${days[6].getMonth() + 1}`;
+  const fmtTime = m => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 > 0 ? ` ${m % 60}min` : ""}` : `${m}min`;
+  const sec = { fontSize: 9, color: T.textTer, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 };
 
   return (
     <div>
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
-        <button onClick={()=>setWeekOffset(w=>w-1)} style={{...btnStyle, padding:"8px 16px", background:WARM, color:BARK, boxShadow:"none"}}>‹</button>
-        <div style={{fontWeight:700, color:SLATE, fontSize:14}}>{weekLabel}</div>
-        <button onClick={()=>setWeekOffset(w=>Math.min(0,w+1))} style={{...btnStyle, padding:"8px 16px", background:WARM, color:BARK, boxShadow:"none"}}>›</button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <button onClick={() => setOffset(o => o - 1)} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", fontFamily: "inherit" }}>{icChevL()}</button>
+        <div style={{ textAlign: "center" }}>
+          <div style={sec}>Semana</div>
+          <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: T.text }}>{weekLabel}</div>
+        </div>
+        <button onClick={() => setOffset(o => Math.min(0, o + 1))} disabled={offset >= 0} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", opacity: offset >= 0 ? 0.35 : 1, fontFamily: "inherit" }}>{icChevR()}</button>
       </div>
-
-      <div style={{...cardStyle, marginBottom:16}}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 14px"}}>Conclusão por Hábito</h3>
-        <ResponsiveContainer width="100%" height={180}>
-          <BarChart data={barData} layout="vertical" margin={{left:0,right:16,top:0,bottom:0}}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={WARM} />
-            <XAxis type="number" domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{fontSize:10,fill:BARK}} />
-            <YAxis type="category" dataKey="name" tick={{fontSize:11,fill:SLATE}} width={80} />
-            <Tooltip formatter={(v)=>[`${v}%`,"Conclusão"]} contentStyle={{borderRadius:10,border:`1px solid ${WARM}`,fontSize:12}} />
-            <Bar dataKey="pct" radius={[0,4,4,0]}>
-              {barData.map((d,i) => <Cell key={i} fill={d.color} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+        <Glass style={{ padding: "14px 16px" }}><div style={sec}>Média</div><div style={{ fontSize: 34, fontWeight: 400, letterSpacing: "-0.04em", color: T.text, lineHeight: 1 }}>{avg}<span style={{ fontSize: 16, color: T.textSec }}>%</span></div></Glass>
+        <Glass style={{ padding: "14px 16px" }}><div style={sec}>Melhor dia</div><div style={{ fontSize: 20, fontWeight: 500, color: T.text, marginTop: 4 }}>{DAYS[days[bestI].getDay()]}<span style={{ marginLeft: 6, color: T.gold, fontSize: 14 }}>{Math.max(...lineData.map(d => d.pct))}%</span></div></Glass>
       </div>
-
-      <div style={{...cardStyle}}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 14px"}}>Progresso Diário</h3>
-        <ResponsiveContainer width="100%" height={160}>
-          <LineChart data={lineData} margin={{left:-10,right:10,top:5,bottom:0}}>
-            <CartesianGrid strokeDasharray="3 3" stroke={WARM} />
-            <XAxis dataKey="name" tick={{fontSize:11,fill:BARK}} />
-            <YAxis tickFormatter={v=>`${v}%`} tick={{fontSize:10,fill:BARK}} domain={[0,100]} />
-            <Tooltip formatter={(v)=>[`${v}%`,"% Concluído"]} contentStyle={{borderRadius:10,border:`1px solid ${WARM}`,fontSize:12}} />
-            <Line type="monotone" dataKey="pct" stroke={FOREST} strokeWidth={2.5} dot={{fill:FOREST,r:4}} activeDot={{r:6}} />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
+      <Glass style={{ padding: 16, marginBottom: 14 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 12px", letterSpacing: "-0.02em" }}>Progresso diário</h3>
+        <AreaChart data={lineData} height={150} fid="af1" />
+      </Glass>
+      <Glass style={{ padding: 16, marginBottom: 14 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 12px", letterSpacing: "-0.02em" }}>Conclusão por hábito</h3>
+        <HBarChart data={barData} />
+      </Glass>
       {/* Volume grid */}
-      <div style={{...cardStyle}}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 16px"}}>Volume Semanal</h3>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%", borderCollapse:"separate", borderSpacing:"4px 6px"}}>
-            <thead>
-              <tr>
-                <th style={{width:90, textAlign:"left", fontSize:10, fontWeight:700, color:BARK, textTransform:"uppercase", letterSpacing:"0.06em", paddingBottom:4}}>Hábito</th>
-                {days.map((d, i) => (
-                  <th key={i} style={{textAlign:"center", fontSize:10, fontWeight:700, color: dateStr(d) === todayStr() ? FOREST : BARK, textTransform:"uppercase", letterSpacing:"0.04em", paddingBottom:4, minWidth:34}}>
-                    <div>{DAYS_PT[d.getDay()]}</div>
-                    <div style={{fontSize:11, fontWeight:700, color: dateStr(d) === todayStr() ? FOREST : SLATE}}>{d.getDate()}</div>
-                  </th>
-                ))}
-                <th style={{textAlign:"center", fontSize:10, fontWeight:700, color:BARK, textTransform:"uppercase", letterSpacing:"0.04em", paddingBottom:4, paddingLeft:6}}>%</th>
-              </tr>
-            </thead>
+      <Glass style={{ padding: 16, marginBottom: 14 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 14px", letterSpacing: "-0.02em" }}>Volume</h3>
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: "4px 6px" }}>
+            <thead><tr>
+              <th style={{ width: 80, textAlign: "left" }}><span style={{ ...sec, marginBottom: 0 }}>Hábito</span></th>
+              {days.map((d, i) => { const isT = dateStr(d) === todayStr(); return <th key={i} style={{ textAlign: "center" }}><div style={{ fontSize: 8.5, fontWeight: 700, color: isT ? T.accent : T.textTer, textTransform: "uppercase" }}>{DAYS[d.getDay()]}</div><div style={{ fontSize: 11, fontWeight: 600, color: isT ? T.accent : T.textSec, marginTop: 2 }}>{d.getDate()}</div></th>; })}
+              <th style={{ paddingLeft: 6 }}><span style={{ ...sec, marginBottom: 0 }}>%</span></th>
+            </tr></thead>
             <tbody>
-              {habits.filter(h=>h.isActive).map(h => {
-                let done = 0, expected = 0;
-                return (
-                  <tr key={h.id}>
-                    <td style={{paddingRight:8}}>
-                      <div style={{display:"flex", alignItems:"center", gap:5}}>
-                        <span style={{fontSize:14}}>{h.emoji}</span>
-                        <span style={{fontSize:11, fontWeight:600, color:SLATE, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:60}}>{h.name.split(" ")[0]}</span>
-                      </div>
-                    </td>
-                    {days.map((d, i) => {
-                      const ds = dateStr(d);
-                      const dow = d.getDay();
-                      const inFreq = h.frequency[dow];
-                      const entry = entries.find(e => e.habitId === h.id && e.date === ds);
-                      const completed = entry?.completed;
-                      const partial = entry?.value > 0 && !completed;
-                      if (inFreq) { expected++; if (completed) done++; }
-                      return (
-                        <td key={i} style={{textAlign:"center"}}>
-                          {!inFreq ? (
-                            <div style={{width:28, height:28, borderRadius:8, background:"#F5F0EA", margin:"0 auto"}} />
-                          ) : completed ? (
-                            <div style={{width:28, height:28, borderRadius:8, background:h.color, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:`0 2px 6px ${h.color}44`}}>
-                              <span style={{color:"#fff", fontSize:14, fontWeight:700}}>✓</span>
-                            </div>
-                          ) : partial ? (
-                            <div style={{width:28, height:28, borderRadius:8, background:`${h.color}40`, border:`2px solid ${h.color}`, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center"}}>
-                              <span style={{color:h.color, fontSize:12, fontWeight:700}}>~</span>
-                            </div>
-                          ) : (
-                            <div style={{width:28, height:28, borderRadius:8, background:WARM, margin:"0 auto", display:"flex", alignItems:"center", justifyContent:"center"}}>
-                              <span style={{color:BARK, fontSize:12, opacity:0.4}}>○</span>
-                            </div>
-                          )}
-                        </td>
-                      );
-                    })}
-                    <td style={{textAlign:"center", paddingLeft:6}}>
-                      <span style={{fontSize:12, fontWeight:700, color: done===expected&&expected>0 ? GOLD : done>0 ? FOREST : BARK}}>
-                        {expected > 0 ? `${Math.round(done/expected*100)}%` : "—"}
-                      </span>
-                    </td>
-                  </tr>
-                );
+              {active.map(h => {
+                let dn = 0, ex = 0;
+                const cells = days.map((d, i) => {
+                  const ds = dateStr(d), dow = d.getDay();
+                  const inF = h.frequency[dow];
+                  const e = entries.find(e => e.habitId === h.id && e.date === ds);
+                  const counts = inF || e; // count if scheduled OR has entry
+                  if (counts) { ex++; if (e?.completed) dn++; }
+                  return { inF, hasEntry: !!e, completed: e?.completed, partial: e?.value > 0 && !e?.completed, key: i };
+                });
+                return <tr key={h.id}>
+                  <td style={{ paddingRight: 4 }}><div style={{ display: "flex", alignItems: "center", gap: 5 }}><HabitIcon name={h.emoji} size={13} color={h.color} sw={1.8} /><span style={{ fontSize: 11, fontWeight: 500, color: T.textSec, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 56 }}>{h.name.split(" ")[0]}</span></div></td>
+                  {cells.map(c => <td key={c.key} style={{ textAlign: "center" }}>
+                    {c.completed
+                      ? <div style={{ width: 26, height: 26, borderRadius: 7, background: h.color, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", color: "#0E1410", fontSize: 13, fontWeight: 700, boxShadow: `0 0 8px ${h.color}80`, border: !c.inF ? `2px solid ${T.gold}` : "none" }}>✓</div>
+                      : c.partial
+                        ? <div style={{ width: 26, height: 26, borderRadius: 7, background: `${h.color}33`, border: `0.5px solid ${h.color}`, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", color: h.color, fontSize: 12, fontWeight: 700 }}>~</div>
+                        : !c.inF
+                          ? <div style={{ width: 26, height: 26, borderRadius: 7, background: "rgba(255,255,255,0.02)", margin: "0 auto" }} />
+                          : <div style={{ width: 26, height: 26, borderRadius: 7, background: "rgba(255,255,255,0.04)", border: "0.5px dashed rgba(255,255,255,0.08)", margin: "0 auto" }} />}
+                  </td>)}
+                  <td style={{ textAlign: "center", paddingLeft: 6 }}><span style={{ fontSize: 12, fontWeight: 700, color: dn === ex && ex > 0 ? T.gold : dn > 0 ? T.accent : T.textTer }}>{ex > 0 ? `${Math.round(dn / ex * 100)}%` : "—"}</span></td>
+                </tr>;
               })}
             </tbody>
           </table>
         </div>
-        <div style={{display:"flex", gap:12, marginTop:14, flexWrap:"wrap"}}>
-          {[
-            {color:FOREST, label:"Concluído", icon:"✓"},
-            {color:FOREST, label:"Parcial", partial:true, icon:"~"},
-            {color:BARK, label:"Não feito", empty:true, icon:"○"},
-            {color:"#F5F0EA", label:"Não previsto", noicon:true},
-          ].map((l,i) => (
-            <div key={i} style={{display:"flex", alignItems:"center", gap:5}}>
-              <div style={{
-                width:16, height:16, borderRadius:4,
-                background: l.partial ? `${FOREST}40` : l.empty ? WARM : l.noicon ? "#F5F0EA" : FOREST,
-                border: l.partial ? `2px solid ${FOREST}` : "none",
-                display:"flex", alignItems:"center", justifyContent:"center"
-              }}>
-                {!l.noicon && <span style={{fontSize:9, color: l.partial ? FOREST : l.empty ? BARK : "#fff", opacity: l.empty ? 0.4 : 1}}>{l.icon}</span>}
-              </div>
-              <span style={{fontSize:10, color:BARK, fontWeight:600}}>{l.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Text summary per habit */}
-      <div style={{...cardStyle}}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 16px"}}>Resumo da Semana</h3>
-        <div style={{display:"flex", flexDirection:"column", gap:12}}>
-          {habits.filter(h=>h.isActive).map(h => {
-            // Current week stats
-            let curValue = 0, curDone = 0, curExpected = 0;
-            dayStrs.forEach(d => {
-              const dow = new Date(d+"T12:00:00").getDay();
-              if (!h.frequency[dow]) return;
-              curExpected++;
-              const entry = entries.find(e => e.habitId === h.id && e.date === d);
-              if (entry?.completed) { curDone++; curValue += entry.value || 0; }
-              else if (entry?.value > 0) curValue += entry.value;
-            });
-
-            // Previous week stats
-            const prevDayStrs = days.map(d => dateStr(addDays(d, -7)));
-            let prevValue = 0, prevDone = 0, prevExpected = 0;
-            prevDayStrs.forEach(d => {
-              const dow = new Date(d+"T12:00:00").getDay();
-              if (!h.frequency[dow]) return;
-              prevExpected++;
-              const entry = entries.find(e => e.habitId === h.id && e.date === d);
-              if (entry?.completed) { prevDone++; prevValue += entry.value || 0; }
-              else if (entry?.value > 0) prevValue += entry.value;
-            });
-
-            const isTime = h.goalType === "time";
-            const unit = h.goalUnit || "min";
-
-            // Format time nicely
-            function fmtTime(mins) {
-              if (mins >= 60) {
-                const h = Math.floor(mins/60);
-                const m = mins % 60;
-                return m > 0 ? `${h}h ${m}min` : `${h}h`;
-              }
-              return `${mins}min`;
-            }
-
-            // Build main sentence
-            let mainText = "";
-            if (isTime) {
-              mainText = curValue > 0
-                ? `Você dedicou ${fmtTime(curValue)} de ${h.name.toLowerCase()} esta semana.`
-                : `Você não registrou ${h.name.toLowerCase()} esta semana.`;
-            } else {
-              mainText = curDone > 0
-                ? `Você realizou ${h.name.toLowerCase()} ${curDone} vez${curDone > 1 ? "es" : ""} esta semana.`
-                : `Você não realizou ${h.name.toLowerCase()} esta semana.`;
-            }
-
-            // Build comparison sentence
-            let compareText = "";
-            let trend = 0;
-            if (isTime) {
-              const diff = curValue - prevValue;
-              trend = diff > 0 ? 1 : diff < 0 ? -1 : 0;
-              if (prevValue === 0 && curValue === 0) compareText = "Nenhum registro nas últimas duas semanas.";
-              else if (prevValue === 0) compareText = "Sem dados na semana anterior para comparar.";
-              else if (diff === 0) compareText = `Mesmo volume da semana passada (${fmtTime(prevValue)}).`;
-              else compareText = `${diff > 0 ? "↑ Mais" : "↓ Menos"} ${fmtTime(Math.abs(diff))} do que na semana passada (${fmtTime(prevValue)}).`;
-            } else {
-              const diff = curDone - prevDone;
-              trend = diff > 0 ? 1 : diff < 0 ? -1 : 0;
-              if (prevDone === 0 && curDone === 0) compareText = "Nenhum registro nas últimas duas semanas.";
-              else if (prevDone === 0) compareText = "Sem dados na semana anterior para comparar.";
-              else if (diff === 0) compareText = `Mesmo número da semana passada (${prevDone}x).`;
-              else compareText = `${diff > 0 ? "↑" : "↓"} ${Math.abs(diff)} vez${Math.abs(diff)>1?"es":""} ${diff > 0 ? "a mais" : "a menos"} do que na semana passada (${prevDone}x).`;
-            }
-
-            const trendColor = trend > 0 ? FOREST : trend < 0 ? "#E63946" : BARK;
-
+      </Glass>
+      {/* Text summary */}
+      <Glass style={{ padding: 16 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 16px", letterSpacing: "-0.02em" }}>Resumo da semana</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {active.map(h => {
+            let cV = 0, cD = 0, cE = 0;
+            dayStrs.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; cE++; const e = entries.find(e => e.habitId === h.id && e.date === d); if (e?.completed) { cD++; cV += e.value || 0; } else if (e?.value > 0) cV += e.value; });
+            const prev = days.map(d => dateStr(addDays(d, -7)));
+            let pV = 0, pD = 0;
+            prev.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; const e = entries.find(e => e.habitId === h.id && e.date === d); if (e?.completed) { pD++; pV += e.value || 0; } else if (e?.value > 0) pV += e.value; });
+            const isT = h.goalType === "time";
+            const main = isT ? (cV > 0 ? `Você dedicou ${fmtTime(cV)} de ${h.name.toLowerCase()} esta semana.` : `Você não registrou ${h.name.toLowerCase()} esta semana.`) : (cD > 0 ? `Você realizou ${h.name.toLowerCase()} ${cD} vez${cD > 1 ? "es" : ""} esta semana.` : `Você não realizou ${h.name.toLowerCase()} esta semana.`);
+            let cmp = "", trend = 0;
+            if (isT) { const diff = cV - pV; trend = diff > 0 ? 1 : diff < 0 ? -1 : 0; cmp = pV === 0 && cV === 0 ? "Nenhum registro nas últimas duas semanas." : pV === 0 ? "Sem dados na semana anterior." : diff === 0 ? `Mesmo volume (${fmtTime(pV)}).` : `${diff > 0 ? "↑ Mais" : "↓ Menos"} ${fmtTime(Math.abs(diff))} do que na semana passada (${fmtTime(pV)}).`; }
+            else { const diff = cD - pD; trend = diff > 0 ? 1 : diff < 0 ? -1 : 0; cmp = pD === 0 && cD === 0 ? "Nenhum registro nas últimas duas semanas." : pD === 0 ? "Sem dados na semana anterior." : diff === 0 ? `Mesmo número (${pD}x).` : `${diff > 0 ? "↑" : "↓"} ${Math.abs(diff)}x ${diff > 0 ? "a mais" : "a menos"} (semana passada: ${pD}x).`; }
             return (
-              <div key={h.id} style={{
-                padding:"12px 14px", borderRadius:12, background:CREAM,
-                borderLeft:`4px solid ${h.color}`
-              }}>
-                <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:6}}>
-                  <span style={{fontSize:20}}>{h.emoji}</span>
-                  <span style={{fontWeight:700, fontSize:13, color:SLATE}}>{h.name}</span>
-                </div>
-                <p style={{margin:"0 0 4px", fontSize:13, color:SLATE, lineHeight:1.5}}>{mainText}</p>
-                <p style={{margin:0, fontSize:12, color:trendColor, fontWeight:600, lineHeight:1.5}}>{compareText}</p>
+              <div key={h.id} style={{ padding: "12px 14px", borderRadius: 14, background: "rgba(255,255,255,0.03)", borderLeft: `3px solid ${h.color}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}><HabitIcon name={h.emoji} size={16} color={h.color} /><span style={{ fontWeight: 600, fontSize: 13, color: T.text }}>{h.name}</span></div>
+                <p style={{ margin: "0 0 3px", fontSize: 13, color: T.textSec, lineHeight: 1.5 }}>{main}</p>
+                <p style={{ margin: 0, fontSize: 12, color: trend > 0 ? T.accent : trend < 0 ? T.danger : T.textTer, fontWeight: 600, lineHeight: 1.5 }}>{cmp}</p>
               </div>
             );
           })}
-          {habits.filter(h=>h.isActive).length === 0 && (
-            <div style={{textAlign:"center", color:BARK, padding:16}}>Nenhum hábito ativo.</div>
-          )}
         </div>
-      </div>
+      </Glass>
     </div>
   );
 }
 
 // ─── MONTHLY REPORT ───────────────────────────────────────────────────────────
 function MonthlyReport({ habits, entries }) {
-  const [monthOffset, setMonthOffset] = useState(0);
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = new Date(year, now.getMonth() + monthOffset, 1).getMonth();
-  const displayYear = new Date(year, now.getMonth() + monthOffset, 1).getFullYear();
-  const daysInMonth = new Date(displayYear, month+1, 0).getDate();
-  const days = Array.from({length:daysInMonth}, (_,i) => {
-    const d = new Date(displayYear, month, i+1);
-    return dateStr(d);
-  });
-
-  // Heatmap: intensity per day
+  const [mo, setMo] = useState(0);
+  const now = new Date(), ref = new Date(now.getFullYear(), now.getMonth() + mo, 1);
+  const yr = ref.getFullYear(), mn = ref.getMonth(), dim = new Date(yr, mn + 1, 0).getDate();
+  const days = Array.from({ length: dim }, (_, i) => dateStr(new Date(yr, mn, i + 1)));
+  const firstDow = new Date(yr, mn, 1).getDay();
+  const active = habits.filter(h => h.isActive);
+  const HC = ["rgba(255,255,255,0.05)", "oklch(0.55 0.10 160 / 0.4)", "oklch(0.65 0.11 160 / 0.6)", "oklch(0.72 0.12 160 / 0.75)", "oklch(0.78 0.12 160)"];
   const intensity = days.map(d => {
-    const dow = new Date(d+"T12:00:00").getDay();
-    const dayH = habits.filter(h=>h.isActive&&h.frequency[dow]);
-    const done = dayH.filter(h=>entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)).length;
-    const total = dayH.length;
-    if (total === 0) return 0;
-    const pct = done/total;
-    if (pct === 0) return 0;
-    if (pct < 0.33) return 1;
-    if (pct < 0.66) return 2;
-    if (pct < 1) return 3;
-    return 4;
+    const dow = new Date(d + "T12:00:00").getDay();
+    const dayHabitIds = new Set([
+      ...active.filter(h => h.frequency[dow]).map(h => h.id),
+      ...entries.filter(e => e.date === d).map(e => e.habitId)
+    ]);
+    if (!dayHabitIds.size) return 0;
+    const dn = [...dayHabitIds].filter(id => entries.find(e => e.habitId === id && e.date === d && e.completed)).length;
+    const p = dn / dayHabitIds.size;
+    return p === 0 ? 0 : p < 0.33 ? 1 : p < 0.66 ? 2 : p < 1 ? 3 : 4;
   });
-
-  // Category pie
-  const catData = CATEGORIES.map(c => {
-    const catHabits = habits.filter(h=>h.category===c&&h.isActive);
-    const done = catHabits.reduce((s,h) => s + days.filter(d=>entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)).length, 0);
-    return { name:c, value:done, color:CAT_COLORS[c] };
-  }).filter(c=>c.value>0);
-
-  // Weekly trend
+  const catData = Object.entries(CAT_COLORS).map(([cat, color]) => { const ch = active.filter(h => h.category === cat), v = ch.reduce((s, h) => s + days.filter(d => entries.find(e => e.habitId === h.id && e.date === d && e.completed)).length, 0); return { name: cat, value: v, color }; }).filter(c => c.value > 0);
+  const total = catData.reduce((s, c) => s + c.value, 0);
   const weekTrend = [];
-  for (let w=0; w<5; w++) {
-    const wDays = days.slice(w*7, (w+1)*7);
-    if (!wDays.length) continue;
-    let done=0, total=0;
-    wDays.forEach(d => {
-      const dow = new Date(d+"T12:00:00").getDay();
-      const dh = habits.filter(h=>h.isActive&&h.frequency[dow]);
-      total += dh.length;
-      done += dh.filter(h=>entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)).length;
+  for (let w = 0; w < 5; w++) {
+    const wd = days.slice(w * 7, (w + 1) * 7);
+    if (!wd.length) continue;
+    let d = 0, t = 0;
+    wd.forEach(ds => {
+      const dow = new Date(ds + "T12:00:00").getDay();
+      const ids = new Set([...active.filter(h => h.frequency[dow]).map(h => h.id), ...entries.filter(e => e.date === ds).map(e => e.habitId)]);
+      t += ids.size;
+      d += [...ids].filter(id => entries.find(e => e.habitId === id && e.date === ds && e.completed)).length;
     });
-    weekTrend.push({name:`S${w+1}`, pct:total>0?Math.round(done/total*100):0});
+    weekTrend.push({ name: `S${w + 1}`, pct: t > 0 ? Math.round(d / t * 100) : 0, color: T.accent });
   }
-
-  const firstDow = new Date(displayYear, month, 1).getDay();
-
+  const sec = { fontSize: 9, color: T.textTer, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" };
   return (
     <div>
-      <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16}}>
-        <button onClick={()=>setMonthOffset(m=>m-1)} style={{...btnStyle, padding:"8px 16px", background:WARM, color:BARK, boxShadow:"none"}}>‹</button>
-        <div style={{fontWeight:700, color:SLATE, fontSize:15}}>{MONTHS_PT[month]} {displayYear}</div>
-        <button onClick={()=>setMonthOffset(m=>Math.min(0,m+1))} style={{...btnStyle, padding:"8px 16px", background:WARM, color:BARK, boxShadow:"none"}}>›</button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <button onClick={() => setMo(m => m - 1)} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", fontFamily: "inherit" }}>{icChevL()}</button>
+        <div style={{ textAlign: "center" }}><div style={sec}>Mês</div><div style={{ fontSize: 18, fontWeight: 500, color: T.text, letterSpacing: "-0.02em" }}>{MONTHS[mn]} {yr}</div></div>
+        <button onClick={() => setMo(m => Math.min(0, m + 1))} disabled={mo >= 0} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", opacity: mo >= 0 ? 0.35 : 1, fontFamily: "inherit" }}>{icChevR()}</button>
       </div>
-
-      {/* Calendar heatmap */}
-      <div style={{...cardStyle, marginBottom:16}}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 12px"}}>Calendário de Consistência</h3>
-        <div style={{display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:4}}>
-          {DAYS_PT.map(d => <div key={d} style={{textAlign:"center", fontSize:9, fontWeight:700, color:BARK, textTransform:"uppercase", padding:"2px 0"}}>{d[0]}</div>)}
-          {Array.from({length:firstDow}).map((_,i) => <div key={"e"+i} />)}
-          {days.map((d,i) => (
-            <div key={d} title={d} style={{
-              aspectRatio:"1", borderRadius:6, display:"flex", alignItems:"center",
-              justifyContent:"center", fontSize:10, fontWeight:700,
-              background: ["#F0EAE0","#C8E6D5","#8DC9AA","#4DA57A","#1A6B4A"][intensity[i]],
-              color: intensity[i] >= 3 ? "#fff" : BARK,
-              transition:"background 0.2s"
-            }}>
-              {new Date(d+"T12:00:00").getDate()}
-            </div>
-          ))}
+      <Glass style={{ padding: 16, marginBottom: 14 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 12px", letterSpacing: "-0.02em" }}>Calendário</h3>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
+          {DAYS.map(d => <div key={d} style={{ textAlign: "center", fontSize: 9, fontWeight: 700, color: T.textQuat, textTransform: "uppercase", padding: "2px 0" }}>{d[0]}</div>)}
+          {Array.from({ length: firstDow }).map((_, i) => <div key={"e" + i} />)}
+          {days.map((d, i) => <div key={d} style={{ aspectRatio: "1", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9.5, fontWeight: 600, background: HC[intensity[i]], color: intensity[i] >= 3 ? T.text : T.textTer, transition: "background 0.2s" }}>{new Date(d + "T12:00:00").getDate()}</div>)}
         </div>
-        <div style={{display:"flex", gap:4, marginTop:10, alignItems:"center", justifyContent:"flex-end"}}>
-          <span style={{fontSize:10, color:BARK}}>Menos</span>
-          {["#F0EAE0","#C8E6D5","#8DC9AA","#4DA57A","#1A6B4A"].map((c,i) =>
-            <div key={i} style={{width:12, height:12, borderRadius:3, background:c}} />
-          )}
-          <span style={{fontSize:10, color:BARK}}>Mais</span>
+        <div style={{ display: "flex", gap: 4, marginTop: 10, alignItems: "center", justifyContent: "flex-end" }}>
+          <span style={{ fontSize: 9, color: T.textTer }}>Menos</span>
+          {HC.map((c, i) => <div key={i} style={{ width: 11, height: 11, borderRadius: 3, background: c }} />)}
+          <span style={{ fontSize: 9, color: T.textTer }}>Mais</span>
         </div>
-      </div>
-
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:14, marginBottom:14}}>
-        <div style={cardStyle}>
-          <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:14, margin:"0 0 10px"}}>Por Categoria</h3>
-          <ResponsiveContainer width="100%" height={150}>
-            <PieChart>
-              <Pie data={catData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={60} paddingAngle={2}>
-                {catData.map((d,i) => <Cell key={i} fill={d.color} />)}
-              </Pie>
-              <Tooltip formatter={(v,n)=>[v+" dias",n]} contentStyle={{borderRadius:8,fontSize:11}} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        <div style={cardStyle}>
-          <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:14, margin:"0 0 10px"}}>Por Semana</h3>
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={weekTrend} margin={{left:-20,right:0}}>
-              <CartesianGrid strokeDasharray="3 3" stroke={WARM} />
-              <XAxis dataKey="name" tick={{fontSize:11}} />
-              <YAxis tickFormatter={v=>`${v}%`} tick={{fontSize:9}} domain={[0,100]} />
-              <Tooltip formatter={v=>[`${v}%`]} contentStyle={{borderRadius:8,fontSize:11}} />
-              <Bar dataKey="pct" fill={FOREST} radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      </Glass>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+        <Glass style={{ padding: 14 }}>
+          <h3 style={{ fontFamily: "inherit", fontSize: 14, fontWeight: 500, color: T.text, margin: "0 0 12px" }}>Categorias</h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {catData.slice(0, 4).map(c => <div key={c.name}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}><span style={{ fontSize: 10, color: T.textSec, fontWeight: 600 }}>{c.name}</span><span style={{ fontSize: 10, color: c.color, fontWeight: 700 }}>{total > 0 ? Math.round(c.value / total * 100) : 0}%</span></div><div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)" }}><div style={{ height: "100%", borderRadius: 2, background: c.color, width: `${total > 0 ? c.value / total * 100 : 0}%`, transition: "width 0.5s" }} /></div></div>)}
+          </div>
+        </Glass>
+        <Glass style={{ padding: 14 }}>
+          <h3 style={{ fontFamily: "inherit", fontSize: 14, fontWeight: 500, color: T.text, margin: "0 0 10px" }}>Por semana</h3>
+          <VBarChart data={weekTrend} height={130} />
+        </Glass>
       </div>
     </div>
   );
@@ -1218,135 +764,239 @@ function MonthlyReport({ habits, entries }) {
 
 // ─── ANNUAL REPORT ────────────────────────────────────────────────────────────
 function AnnualReport({ habits, entries }) {
-  const year = new Date().getFullYear();
-  const startDate = new Date(year, 0, 1);
-  const today = new Date();
-  const totalDays = Math.floor((today - startDate) / 86400000) + 1;
-  const allDays = Array.from({length:totalDays}, (_,i) => dateStr(addDays(startDate, i)));
-
-  // Intensity per day
-  const dayIntensity = allDays.map(d => {
-    const dow = new Date(d+"T12:00:00").getDay();
-    const dh = habits.filter(h=>h.isActive&&h.frequency[dow]);
-    if (!dh.length) return 0;
-    const done = dh.filter(h=>entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)).length;
-    const pct = done/dh.length;
-    if (pct === 0) return 0;
-    if (pct < 0.25) return 1;
-    if (pct < 0.5) return 2;
-    if (pct < 0.75) return 3;
-    if (pct < 1) return 4;
-    return 5;
+  const yr = new Date().getFullYear(), start = new Date(yr, 0, 1);
+  const total = Math.floor((new Date() - start) / 86400000) + 1;
+  const allDays = Array.from({ length: total }, (_, i) => dateStr(addDays(start, i)));
+  const active = habits.filter(h => h.isActive);
+  const HC = ["rgba(255,255,255,0.04)", "oklch(0.50 0.09 160 / 0.4)", "oklch(0.60 0.10 160 / 0.55)", "oklch(0.68 0.11 160 / 0.7)", "oklch(0.74 0.12 160 / 0.85)", "oklch(0.78 0.12 160)"];
+  const dayInt = allDays.map(d => {
+    const dow = new Date(d + "T12:00:00").getDay();
+    const ids = new Set([...active.filter(h => h.frequency[dow]).map(h => h.id), ...entries.filter(e => e.date === d).map(e => e.habitId)]);
+    if (!ids.size) return 0;
+    const dn = [...ids].filter(id => entries.find(e => e.habitId === id && e.date === d && e.completed)).length;
+    const p = dn / ids.size;
+    return p === 0 ? 0 : p < 0.25 ? 1 : p < 0.5 ? 2 : p < 0.75 ? 3 : p < 1 ? 4 : 5;
   });
-
-  // Group by week for grid display
-  const firstDow = startDate.getDay();
-  const weeks = [];
-  let week = Array(firstDow).fill(null);
-  allDays.forEach((d, i) => {
-    week.push({ date:d, intensity:dayIntensity[i] });
-    if (week.length === 7) { weeks.push(week); week = []; }
-  });
-  if (week.length) { while(week.length < 7) week.push(null); weeks.push(week); }
-
-  // Monthly bars
-  const monthData = MONTHS_PT.map((m,mi) => {
-    const mDays = allDays.filter(d => new Date(d+"T12:00:00").getMonth() === mi);
-    if (!mDays.length) return { name:m, pct:0 };
-    let done=0, total=0;
-    mDays.forEach(d => {
-      const dow = new Date(d+"T12:00:00").getDay();
-      const dh = habits.filter(h=>h.isActive&&h.frequency[dow]);
-      total += dh.length;
-      done += dh.filter(h=>entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)).length;
+  const firstDow = start.getDay();
+  const weeks = []; let week = Array(firstDow).fill(null);
+  allDays.forEach((d, i) => { week.push({ date: d, intensity: dayInt[i] }); if (week.length === 7) { weeks.push(week); week = []; } });
+  if (week.length) { while (week.length < 7) week.push(null); weeks.push(week); }
+  const monthData = MONTHS.map((m, mi) => {
+    const md = allDays.filter(d => new Date(d + "T12:00:00").getMonth() === mi);
+    if (!md.length) return { month: m, pct: 0, color: T.accent };
+    let d = 0, t = 0;
+    md.forEach(ds => {
+      const dow = new Date(ds + "T12:00:00").getDay();
+      const ids = new Set([...active.filter(h => h.frequency[dow]).map(h => h.id), ...entries.filter(e => e.date === ds).map(e => e.habitId)]);
+      t += ids.size;
+      d += [...ids].filter(id => entries.find(e => e.habitId === id && e.date === ds && e.completed)).length;
     });
-    return { name:m, pct:total>0?Math.round(done/total*100):0 };
+    return { month: m, pct: t > 0 ? Math.round(d / t * 100) : 0, color: T.accent };
   });
-
-  // Top habits
-  const topHabits = habits.filter(h=>h.isActive).map(h => {
-    const done = allDays.filter(d=>entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)).length;
-    const streak = (() => {
-      let best=0, cur=0;
-      allDays.forEach(d=>{
-        const dow = new Date(d+"T12:00:00").getDay();
-        if(!h.frequency[dow]) return;
-        if(entries.find(e=>e.habitId===h.id&&e.date===d&&e.completed)){cur++;best=Math.max(best,cur);}
-        else cur=0;
-      });
-      return best;
-    })();
-    return {...h, done, bestStreak:streak};
-  }).sort((a,b)=>b.done-a.done).slice(0,3);
-
+  const topHabits = active.map(h => { const dn = allDays.filter(d => entries.find(e => e.habitId === h.id && e.date === d && e.completed)).length; let best = 0, cur = 0; allDays.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; if (entries.find(e => e.habitId === h.id && e.date === d && e.completed)) { cur++; best = Math.max(best, cur); } else cur = 0; }); return { ...h, done: dn, bestStreak: best }; }).sort((a, b) => b.done - a.done).slice(0, 3);
   return (
     <div>
-      <div style={{...cardStyle, marginBottom:16}}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 12px"}}>
-          Heatmap {year}
-        </h3>
-        {/* Month labels */}
-        <div style={{display:"flex", overflowX:"auto", paddingBottom:4}}>
-          <div style={{display:"flex", flexDirection:"column", gap:1, marginRight:4}}>
-            {["D","S","T","Q","Q","S","S"].map((d,i)=>(
-              <div key={i} style={{height:11, fontSize:7, color:BARK, lineHeight:"11px", fontWeight:700}}>{d}</div>
-            ))}
+      <Glass style={{ padding: 16, marginBottom: 14 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 12px", letterSpacing: "-0.02em" }}>Heatmap {yr}</h3>
+        <div style={{ display: "flex", overflowX: "auto", paddingBottom: 4 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, marginRight: 4 }}>
+            {["D", "S", "T", "Q", "Q", "S", "S"].map((d, i) => <div key={i} style={{ height: 11, fontSize: 7, color: T.textQuat, lineHeight: "11px", fontWeight: 700 }}>{d}</div>)}
           </div>
-          {weeks.map((week,wi) => (
-            <div key={wi} style={{display:"flex", flexDirection:"column", gap:1, marginRight:1}}>
-              {week.map((day,di) => day ? (
-                <HeatmapCell key={di} date={day.date} intensity={day.intensity} size={11} />
-              ) : <div key={di} style={{width:11,height:11}} />)}
+          {weeks.map((wk, wi) => (
+            <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 1, marginRight: 1 }}>
+              {wk.map((day, di) => day ? <div key={di} title={day.date} style={{ width: 11, height: 11, borderRadius: 2, background: HC[day.intensity], transition: "background 0.2s" }} /> : <div key={di} style={{ width: 11, height: 11 }} />)}
             </div>
           ))}
         </div>
-        <div style={{display:"flex", gap:4, marginTop:8, alignItems:"center", justifyContent:"flex-end"}}>
-          <span style={{fontSize:9, color:BARK}}>Menos</span>
-          {["#E8DDD0","#A8D5BC","#5AAD85","#2A8A62","#1A6B4A","#0F4030"].map((c,i)=>
-            <div key={i} style={{width:10, height:10, borderRadius:2, background:c}} />
-          )}
-          <span style={{fontSize:9, color:BARK}}>Mais</span>
+        <div style={{ display: "flex", gap: 4, marginTop: 8, alignItems: "center", justifyContent: "flex-end" }}>
+          <span style={{ fontSize: 9, color: T.textTer }}>Menos</span>
+          {HC.map((c, i) => <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />)}
+          <span style={{ fontSize: 9, color: T.textTer }}>Mais</span>
         </div>
-      </div>
-
-      <div style={{...cardStyle, marginBottom:16}}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 12px"}}>Evolução Mensal</h3>
-        <ResponsiveContainer width="100%" height={160}>
-          <BarChart data={monthData} margin={{left:-10,right:4}}>
-            <CartesianGrid strokeDasharray="3 3" stroke={WARM} />
-            <XAxis dataKey="name" tick={{fontSize:9}} />
-            <YAxis tickFormatter={v=>`${v}%`} tick={{fontSize:9}} domain={[0,100]} />
-            <Tooltip formatter={v=>[`${v}%`,"% Conclusão"]} contentStyle={{borderRadius:8,fontSize:11}} />
-            <Bar dataKey="pct" fill={FOREST} radius={[3,3,0,0]}>
-              {monthData.map((d,i) => <Cell key={i} fill={d.pct>=80?GOLD:d.pct>=50?FOREST:FOREST_LIGHT} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div style={cardStyle}>
-        <h3 style={{fontFamily:"'Playfair Display',serif", color:FOREST_DARK, fontSize:16, margin:"0 0 14px"}}>🏆 Top Hábitos do Ano</h3>
-        {topHabits.map((h,i) => (
-          <div key={h.id} style={{
-            display:"flex", alignItems:"center", gap:12, padding:"10px 0",
-            borderBottom: i<topHabits.length-1 ? `1px solid ${WARM}` : "none"
-          }}>
-            <div style={{
-              width:28, height:28, borderRadius:8, background:GOLD, color:"#fff",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              fontWeight:900, fontSize:14
-            }}>#{i+1}</div>
-            <div style={{fontSize:24}}>{h.emoji}</div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:700, color:SLATE, fontSize:14}}>{h.name}</div>
-              <div style={{fontSize:11, color:BARK}}>{h.done} dias completados · 🔥 {h.bestStreak} melhor streak</div>
+      </Glass>
+      <Glass style={{ padding: 16, marginBottom: 14 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 12px", letterSpacing: "-0.02em" }}>Evolução mensal</h3>
+        <VBarChart data={monthData} height={160} />
+      </Glass>
+      <Glass style={{ padding: 16 }}>
+        <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 16px", letterSpacing: "-0.02em" }}>🏆 Top hábitos do ano</h3>
+        {topHabits.map((h, i) => (
+          <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < topHabits.length - 1 ? "0.5px solid rgba(255,255,255,0.06)" : "none" }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: `${T.gold}28`, border: `0.5px solid ${T.gold}`, color: T.gold, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>#{i + 1}</div>
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: `${h.color}4a`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><HabitIcon name={h.emoji} size={20} color={h.color} /></div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 600, color: T.text, fontSize: 14 }}>{h.name}</div>
+              <div style={{ fontSize: 11, color: T.textTer, marginTop: 2, display: "flex", alignItems: "center", gap: 4 }}>{h.done} dias · {icFlame(10)} {h.bestStreak} melhor streak</div>
             </div>
           </div>
         ))}
-        {topHabits.length === 0 && (
-          <div style={{textAlign:"center", color:BARK, padding:16}}>Nenhum dado ainda</div>
-        )}
+        {topHabits.length === 0 && <div style={{ textAlign: "center", color: T.textTer, padding: 16 }}>Nenhum dado ainda</div>}
+      </Glass>
+    </div>
+  );
+}
+
+function ReportsTab({ habits, entries }) {
+  const [rt, setRt] = useState("weekly");
+  return (
+    <div style={{ padding: "0 16px 120px" }}>
+      <div style={{ ...glass2Style, display: "flex", padding: 4, marginBottom: 16, borderRadius: 999 }}>
+        {[{ id: "weekly", label: "Semanal" }, { id: "monthly", label: "Mensal" }, { id: "annual", label: "Anual" }].map(t => (
+          <button key={t.id} onClick={() => setRt(t.id)} style={{ flex: 1, padding: "8px 4px", borderRadius: 999, border: "none", background: rt === t.id ? "linear-gradient(180deg,rgba(255,255,255,0.22),rgba(255,255,255,0.06))" : "transparent", boxShadow: rt === t.id ? "inset 0 1px 0 rgba(255,255,255,0.3)" : "none", color: rt === t.id ? T.text : T.textSec, fontWeight: 600, fontSize: 12.5, cursor: "pointer", transition: "all 0.2s", fontFamily: "inherit" }}>{t.label}</button>
+        ))}
       </div>
+      {rt === "weekly" && <WeeklyReport habits={habits} entries={entries} />}
+      {rt === "monthly" && <MonthlyReport habits={habits} entries={entries} />}
+      {rt === "annual" && <AnnualReport habits={habits} entries={entries} />}
+    </div>
+  );
+}
+
+// ─── MAIN ─────────────────────────────────────────────────────────────────────
+export default function Habitus() {
+  const [habits, setHabits] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [tab, setTab] = useState("today");
+  const [selectedDate, setSelectedDate] = useState(todayStr());
+  const [modal, setModal] = useState(null);
+  const [editHabit, setEditHabit] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const loadFromStorage = useCallback(async (spinner = false) => {
+    if (spinner) setSyncing(true);
+    try { const [hr, er] = await Promise.all([sbGet("habits"), sbGet("entries")]); setHabits(hr.map(habitFromDb)); setEntries(er.map(entryFromDb)); }
+    catch (e) { console.error("Load error:", e); }
+    setLoaded(true); if (spinner) setSyncing(false);
+  }, []);
+
+  useEffect(() => { loadFromStorage(); }, []);
+
+  const getEntry = useCallback((habitId, date) => entries.find(e => e.habitId === habitId && e.date === date), [entries]);
+
+  const saveHabit = useCallback(async (form) => {
+    if (editHabit) { const u = { ...form, id: editHabit.id, createdAt: editHabit.createdAt }; setHabits(hs => hs.map(h => h.id === editHabit.id ? u : h)); await sbUpsert("habits", [habitToDb(u)]); }
+    else { const n = { ...form, id: uuid(), createdAt: todayStr() }; setHabits(hs => [...hs, n]); await sbUpsert("habits", [habitToDb(n)]); }
+    setModal(null); setEditHabit(null);
+  }, [editHabit]);
+
+  const deleteHabit = useCallback(id => setConfirmDelete(id), []);
+  const confirmDeleteHabit = useCallback(async id => { setHabits(hs => hs.filter(h => h.id !== id)); setEntries(es => es.filter(e => e.habitId !== id)); setConfirmDelete(null); await sbDelete("habits", id); }, []);
+
+  const toggleEntry = useCallback(async (habit, date) => {
+    const ex = entries.find(e => e.habitId === habit.id && e.date === date);
+    if (ex) {
+      if (ex.completed) { setEntries(es => es.filter(e => !(e.habitId === habit.id && e.date === date))); await sbDelete("entries", ex.id); }
+      else { const u = { ...ex, value: habit.goalValue, completed: true }; setEntries(es => es.map(e => e.habitId === habit.id && e.date === date ? u : e)); await sbUpsert("entries", [entryToDb(u)]); }
+    } else { const n = { id: uuid(), habitId: habit.id, date, value: habit.goalValue, completed: true }; setEntries(es => [...es, n]); await sbUpsert("entries", [entryToDb(n)]); }
+  }, [entries]);
+
+  const setEntryValue = useCallback(async (habit, date, value) => {
+    const num = parseFloat(value) || 0, completed = num > 0;
+    const ex = entries.find(e => e.habitId === habit.id && e.date === date);
+    if (ex) { const u = { ...ex, value: num, completed }; setEntries(es => es.map(e => e.habitId === habit.id && e.date === date ? u : e)); await sbUpsert("entries", [entryToDb(u)]); }
+    else if (num > 0) { const n = { id: uuid(), habitId: habit.id, date, value: num, completed }; setEntries(es => [...es, n]); await sbUpsert("entries", [entryToDb(n)]); }
+  }, [entries]);
+
+  const todayHabits = useMemo(() => {
+    const dow = new Date(selectedDate + "T12:00:00").getDay();
+    const scheduled = habits.filter(h => h.isActive && h.frequency[dow]);
+    // Also include active habits that have an entry on this day (unplanned)
+    const unplanned = habits.filter(h =>
+      h.isActive && !h.frequency[dow] &&
+      entries.find(e => e.habitId === h.id && e.date === selectedDate)
+    );
+    return [...scheduled, ...unplanned];
+  }, [habits, selectedDate, entries]);
+  const totalStreak = useMemo(() => habits.reduce((s, h) => s + calcStreak(h.id, entries, habits).current, 0), [habits, entries]);
+
+  if (!loaded) return (
+    <div style={{ minHeight: "100vh", background: "#050507", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ width: 64, height: 64, borderRadius: 20, background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}><HabitIcon name="leaf" size={32} color={T.accent} /></div>
+        <div style={{ fontSize: 24, fontWeight: 500, letterSpacing: "-0.03em", color: T.text }}>Habitus<span style={{ fontStyle: "italic", color: T.accent }}>.</span></div>
+        <div style={{ fontSize: 12, color: T.textTer, marginTop: 8 }}>Carregando...</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#050507", fontFamily: "'Geist','Inter',-apple-system,system-ui,sans-serif", maxWidth: 480, margin: "0 auto", position: "relative" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        input, select, button { font-family: 'Geist','Inter',-apple-system,system-ui,sans-serif; }
+        ::placeholder { color: rgba(235,235,245,0.3); }
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+        select option { background: #1a1a1e; color: #fff; }
+        ::-webkit-scrollbar { width: 3px; height: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+        @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* Ambient */}
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+        <div style={{ position: "absolute", top: "-20%", left: "-10%", width: "60%", height: "50%", background: "radial-gradient(ellipse, oklch(0.4 0.13 160 / 0.2) 0%, transparent 70%)", filter: "blur(40px)" }} />
+        <div style={{ position: "absolute", bottom: "10%", right: "-10%", width: "50%", height: "40%", background: "radial-gradient(ellipse, oklch(0.4 0.14 240 / 0.15) 0%, transparent 70%)", filter: "blur(40px)" }} />
+      </div>
+
+      <div style={{ position: "relative", zIndex: 1, paddingBottom: 100 }}>
+        {/* Header */}
+        <div style={{ padding: "52px 20px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+          <div>
+            <div style={{ fontSize: 11, color: T.textTer, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 2 }}>
+              {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" }).replace(/^./, c => c.toUpperCase())}
+            </div>
+            <h1 style={{ fontSize: 42, fontWeight: 400, margin: 0, color: T.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
+              Habitus<span style={{ fontStyle: "italic", color: T.accent }}>.</span>
+            </h1>
+          </div>
+          <button onClick={() => { setEditHabit(null); setModal("form"); }} style={{ ...glass2Style, border: "none", borderRadius: 14, padding: "10px 14px", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: T.text, cursor: "pointer" }}>
+            {icPlus()} Novo
+          </button>
+        </div>
+
+        {/* KPIs */}
+        <div style={{ padding: "0 16px 16px", display: "flex", gap: 8 }}>
+          {[
+            { label: "Hoje", value: `${todayHabits.filter(h => getEntry(h.id, selectedDate)?.completed).length}/${todayHabits.length}`, gold: false },
+            { label: "Streaks", value: totalStreak, gold: true },
+            { label: "Ativos", value: habits.filter(h => h.isActive).length, gold: false },
+          ].map(k => (
+            <Glass key={k.label} style={{ flex: 1, padding: "10px 12px", borderRadius: 16 }}>
+              <div style={{ fontSize: 9, color: T.textTer, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>{k.label}</div>
+              <div style={{ fontSize: 24, fontWeight: 400, letterSpacing: "-0.04em", lineHeight: 1.2, marginTop: 2, color: k.gold ? T.gold : T.text, textShadow: k.gold ? `0 0 12px ${T.gold}66` : "none" }}>{k.value}</div>
+            </Glass>
+          ))}
+        </div>
+
+        {/* Sync */}
+        <div style={{ padding: "0 20px 8px", display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={() => loadFromStorage(true)} style={{ background: "none", border: "none", color: T.textTer, cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", gap: 5, fontFamily: "inherit", opacity: syncing ? 0.5 : 1 }}>
+            <span style={{ display: "inline-block", animation: syncing ? "spin 1s linear infinite" : "none", fontSize: 14 }}>⟳</span> Sincronizar
+          </button>
+        </div>
+
+        {/* Content */}
+        <div style={{ animation: "fadeIn 0.25s ease" }}>
+          {tab === "today" && <TodayTab habits={todayHabits} allHabits={habits} entries={entries} selectedDate={selectedDate} setSelectedDate={setSelectedDate} getEntry={getEntry} toggleEntry={toggleEntry} setEntryValue={setEntryValue} />}
+          {tab === "habits" && <HabitsTab habits={habits} entries={entries} onEdit={h => { setEditHabit(h); setModal("form"); }} onDelete={deleteHabit} confirmDelete={confirmDelete} onConfirmDelete={confirmDeleteHabit} onCancelDelete={() => setConfirmDelete(null)} onToggleActive={async id => { const u = habits.map(h => h.id === id ? { ...h, isActive: !h.isActive } : h); setHabits(u); await sbUpsert("habits", [habitToDb(u.find(h => h.id === id))]); }} />}
+          {tab === "reports" && <ReportsTab habits={habits} entries={entries} />}
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, padding: "0 16px 24px", zIndex: 50 }}>
+        <TabBar tab={tab} setTab={setTab} />
+      </div>
+
+      <Modal open={modal === "form"} onClose={() => { setModal(null); setEditHabit(null); }}>
+        <HabitForm habit={editHabit} onSave={saveHabit} onCancel={() => { setModal(null); setEditHabit(null); }} />
+      </Modal>
     </div>
   );
 }
