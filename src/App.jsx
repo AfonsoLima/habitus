@@ -51,8 +51,8 @@ const T = {
   accent: "oklch(0.78 0.12 160)", accentSoft: "oklch(0.78 0.12 160 / 0.18)",
   gold: "oklch(0.82 0.11 75)", danger: "oklch(0.72 0.16 25)",
 };
-const glassStyle = { background: T.glass1, backdropFilter: "blur(28px) saturate(160%)", WebkitBackdropFilter: "blur(28px) saturate(160%)", border: "none", outline: "none", borderRadius: 22, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" };
-const glass2Style = { ...glassStyle, background: T.glass2 };
+const glassStyle = { background: "rgba(28,30,32,0.92)", border: "none", outline: "none", borderRadius: 22, boxShadow: "0 4px 20px rgba(0,0,0,0.4)", transform: "translateZ(0)" };
+const glass2Style = { ...glassStyle, background: "rgba(36,38,42,0.95)" };
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 const Ic = ({ d, s = 20, sw = 1.6 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
@@ -178,7 +178,7 @@ function Modal({ open, onClose, children }) {
     <div onClick={e => e.target === e.currentTarget && onClose()} style={{
       position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)", zIndex: 100,
       display: "flex", alignItems: "flex-end", justifyContent: "center",
-      backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+
     }}>
       <div style={{
         ...glass2Style, borderRadius: "28px 28px 0 0", padding: "20px 20px 40px",
