@@ -51,8 +51,8 @@ const T = {
   accent: "oklch(0.78 0.12 160)", accentSoft: "oklch(0.78 0.12 160 / 0.18)",
   gold: "oklch(0.82 0.11 75)", danger: "oklch(0.72 0.16 25)",
 };
-const glassStyle = { background: T.glass1, backdropFilter: "blur(28px) saturate(160%)", WebkitBackdropFilter: "blur(28px) saturate(160%)", border: "none", borderRadius: 22, boxShadow: "inset 0  0 0 0.5px rgba(255,255,255,0.07), 0 8px 24px rgba(0,0,0,0.35)" };
-const glass2Style = { ...glassStyle, background: T.glass2, boxShadow: "inset 0 0 0 0.5px rgba(255,255,255,0.10), 0 8px 24px rgba(0,0,0,0.35)" };
+const glassStyle = { background: T.glass1, backdropFilter: "blur(28px) saturate(160%)", WebkitBackdropFilter: "blur(28px) saturate(160%)", border: "none", outline: "none", borderRadius: 22, boxShadow: "0 8px 24px rgba(0,0,0,0.35)" };
+const glass2Style = { ...glassStyle, background: T.glass2 };
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 const Ic = ({ d, s = 20, sw = 1.6 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
@@ -140,7 +140,7 @@ function CheckButton({ completed, partial, color, onClick, size = 44 }) {
     : partial ? `${color}38` : "rgba(255,255,255,0.06)";
   return (
     <button onClick={onClick} style={{
-      width: size, height: size, borderRadius: 14, border: completed ? "none" : "0.5px solid rgba(255,255,255,0.14)",
+      width: size, height: size, borderRadius: 14, border: "none",
       background: bg, cursor: "pointer", flexShrink: 0, fontFamily: "inherit",
       boxShadow: completed ? `inset 0 1px 0 rgba(255,255,255,0.35), 0 0 18px ${color}88` : "inset 0 1px 0 rgba(255,255,255,0.18)",
       color: completed ? "#0E1410" : T.textSec, fontSize: 20, fontWeight: 700,
@@ -204,7 +204,7 @@ function HabitForm({ habit, onSave, onCancel }) {
   useEffect(() => { if (!habit) set("color", CAT_COLORS[form.category] || T.accent); }, [form.category]);
 
   const lbl = { fontSize: 10, fontWeight: 700, color: T.textTer, textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 8 };
-  const inp = { width: "100%", padding: "10px 14px", borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: "inherit" };
+  const inp = { width: "100%", padding: "10px 14px", borderRadius: 12, border: "none", background: "rgba(255,255,255,0.08)", fontSize: 14, color: T.text, outline: "none", boxSizing: "border-box", fontFamily: "inherit" };
 
   return (
     <div>
@@ -212,7 +212,7 @@ function HabitForm({ habit, onSave, onCancel }) {
         <h2 style={{ fontFamily: "inherit", fontSize: 24, fontWeight: 500, letterSpacing: "-0.03em", color: T.text, margin: 0 }}>
           {habit ? "Editar hábito" : "Novo hábito"}
         </h2>
-        <button onClick={onCancel} style={{ background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.12)", borderRadius: 10, padding: "6px 12px", color: T.textSec, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Fechar</button>
+        <button onClick={onCancel} style={{ background: "rgba(255,255,255,0.07)", border: "none", borderRadius: 10, padding: "6px 12px", color: T.textSec, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Fechar</button>
       </div>
 
       <Glass style={{ padding: 12, marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
@@ -228,7 +228,7 @@ function HabitForm({ habit, onSave, onCancel }) {
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 6 }}>
           {ICON_NAMES.map(n => (
             <button key={n} onClick={() => set("emoji", n)} style={{
-              aspectRatio: "1/1", borderRadius: 12, cursor: "pointer", border: `0.5px solid ${form.emoji === n ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.09)"}`,
+              aspectRatio: "1/1", borderRadius: 12, cursor: "pointer", border: "none",
               background: form.emoji === n ? `${form.color}44` : "rgba(255,255,255,0.04)",
               display: "flex", alignItems: "center", justifyContent: "center", padding: 8, transition: "all 0.15s",
             }}>
@@ -244,7 +244,7 @@ function HabitForm({ habit, onSave, onCancel }) {
           {CATEGORIES.map(c => (
             <button key={c} onClick={() => set("category", c)} style={{
               padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
-              border: `0.5px solid ${form.category === c ? CAT_COLORS[c] : "rgba(255,255,255,0.09)"}`,
+              border: "none",
               background: form.category === c ? `${CAT_COLORS[c]}2e` : "rgba(255,255,255,0.04)",
               color: form.category === c ? CAT_COLORS[c] : T.textSec,
             }}>{c}</button>
@@ -266,7 +266,7 @@ function HabitForm({ habit, onSave, onCancel }) {
           {DAYS.map((d, i) => (
             <button key={i} onClick={() => toggleDay(i)} style={{
               flex: 1, padding: "9px 2px", borderRadius: 10, fontSize: 10, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s",
-              border: `0.5px solid ${form.frequency[i] ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)"}`,
+              border: "none",
               background: form.frequency[i] ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.03)",
               color: form.frequency[i] ? T.text : T.textTer,
             }}>{d[0]}</button>
@@ -275,7 +275,7 @@ function HabitForm({ habit, onSave, onCancel }) {
       </div>
 
       <div style={{ display: "flex", gap: 10 }}>
-        <button onClick={onCancel} style={{ flex: 1, padding: 13, borderRadius: 14, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
+        <button onClick={onCancel} style={{ flex: 1, padding: 13, borderRadius: 14, border: "none", background: "rgba(255,255,255,0.07)", color: T.textSec, fontWeight: 600, fontSize: 14, cursor: "pointer", fontFamily: "inherit" }}>Cancelar</button>
         <button onClick={() => form.name.trim() && onSave(form)} style={{ flex: 2, padding: 13, borderRadius: 14, border: "none", background: `linear-gradient(180deg,${T.accent},oklch(0.65 0.12 160))`, color: "#0E1410", fontWeight: 700, fontSize: 14, cursor: "pointer", fontFamily: "inherit", boxShadow: `0 0 20px ${T.accentSoft}` }}>
           {habit ? "Salvar" : "Criar hábito"}
         </button>
@@ -387,7 +387,7 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
           return (
             <button key={d} onClick={() => setSelectedDate(d)} style={{
               flex: "0 0 auto", width: 50, padding: "10px 4px", borderRadius: 16, cursor: "pointer", textAlign: "center", fontFamily: "inherit",
-              border: `0.5px solid ${isSel ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.08)"}`,
+              border: "none",
               background: isSel ? "linear-gradient(180deg,rgba(255,255,255,0.18),rgba(255,255,255,0.05))" : "rgba(255,255,255,0.04)",
               boxShadow: isSel ? "inset 0 1px 0 rgba(255,255,255,0.3),0 6px 16px rgba(0,0,0,0.25)" : "none",
               color: isSel ? T.text : T.textSec, transition: "all 0.2s",
@@ -405,7 +405,7 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
         <div style={{ marginBottom: 14 }}>
           <button onClick={() => setShowUnplanned(!showUnplanned)} style={{
             width: "100%", padding: "11px 16px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
-            border: "0.5px dashed rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.03)",
+            border: "none", background: "rgba(255,255,255,0.05)",
             color: T.textSec, fontWeight: 600, fontSize: 13,
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           }}>
@@ -484,7 +484,7 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
                   value={inputs[key] !== undefined ? inputs[key] : (entry?.value || "")}
                   onChange={e => { setInputs(i => ({ ...i, [key]: e.target.value })); if (e.target.value) setEntryValue(h, selectedDate, e.target.value); }}
                   placeholder={String(h.goalValue)}
-                  style={{ width: 54, padding: 6, borderRadius: 9, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", fontSize: 12, textAlign: "center", color: T.text, outline: "none", fontFamily: "inherit" }}
+                  style={{ width: 54, padding: 6, borderRadius: 9, border: "none", background: "rgba(255,255,255,0.08)", fontSize: 12, textAlign: "center", color: T.text, outline: "none", fontFamily: "inherit" }}
                 />
                 <CheckButton completed={!!entry?.completed} partial={entry?.value > 0 && !entry?.completed} color={h.color} onClick={() => toggleEntry(h, selectedDate)} />
               </div>
@@ -509,7 +509,7 @@ function HabitsTab({ habits, entries, onEdit, onDelete, confirmDelete, onConfirm
         {cats.map(c => (
           <button key={c} onClick={() => setFilter(c)} style={{
             flexShrink: 0, padding: "7px 14px", borderRadius: 999, fontWeight: 600, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "inherit", transition: "all 0.15s",
-            border: `0.5px solid ${filter === c ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.09)"}`,
+            border: "none",
             background: filter === c ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.04)",
             color: filter === c ? T.text : T.textSec,
           }}>{c}</button>
@@ -550,10 +550,10 @@ function HabitsTab({ habits, entries, onEdit, onDelete, confirmDelete, onConfirm
                 <span style={{ fontSize: 11, color: T.accent, fontWeight: 700, marginLeft: 4 }}>{exp7 > 0 ? Math.round(done7 / exp7 * 100) : 0}%</span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => onToggleActive(h.id)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                <button onClick={() => onToggleActive(h.id)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "none", background: "rgba(255,255,255,0.07)", color: T.textSec, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                   {h.isActive ? icPause() : icPlay()} {h.isActive ? "Pausar" : "Ativar"}
                 </button>
-                <button onClick={() => onEdit(h)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                <button onClick={() => onEdit(h)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "none", background: "rgba(255,255,255,0.07)", color: T.textSec, fontWeight: 600, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                   {icEdit()} Editar
                 </button>
                 {conf ? (
@@ -562,7 +562,7 @@ function HabitsTab({ habits, entries, onEdit, onDelete, confirmDelete, onConfirm
                     <button onClick={onCancelDelete} style={{ padding: "8px 12px", borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
                   </>
                 ) : (
-                  <button onClick={() => onDelete(h.id)} style={{ padding: "8px 14px", borderRadius: 12, border: `0.5px solid ${T.danger}44`, background: `${T.danger}14`, color: T.danger, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}>{icTrash()}</button>
+                  <button onClick={() => onDelete(h.id)} style={{ padding: "8px 14px", borderRadius: 12, border: "none", background: `${T.danger}18`, color: T.danger, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}>{icTrash()}</button>
                 )}
               </div>
             </Glass>
@@ -612,12 +612,12 @@ function WeeklyReport({ habits, entries }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <button onClick={() => setOffset(o => o - 1)} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", fontFamily: "inherit" }}>{icChevL()}</button>
+        <button onClick={() => setOffset(o => o - 1)} style={{ ...glass2Style, borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", fontFamily: "inherit" }}>{icChevL()}</button>
         <div style={{ textAlign: "center" }}>
           <div style={sec}>Semana</div>
           <div style={{ fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: T.text }}>{weekLabel}</div>
         </div>
-        <button onClick={() => setOffset(o => Math.min(0, o + 1))} disabled={offset >= 0} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", opacity: offset >= 0 ? 0.35 : 1, fontFamily: "inherit" }}>{icChevR()}</button>
+        <button onClick={() => setOffset(o => Math.min(0, o + 1))} disabled={offset >= 0} style={{ ...glass2Style, borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", opacity: offset >= 0 ? 0.35 : 1, fontFamily: "inherit" }}>{icChevR()}</button>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
         <Glass style={{ padding: "14px 16px" }}><div style={sec}>Média</div><div style={{ fontSize: 34, fontWeight: 400, letterSpacing: "-0.04em", color: T.text, lineHeight: 1 }}>{avg}<span style={{ fontSize: 16, color: T.textSec }}>%</span></div></Glass>
@@ -658,7 +658,7 @@ function WeeklyReport({ habits, entries }) {
                     {c.completed
                       ? <div style={{ width: 26, height: 26, borderRadius: 7, background: h.color, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", color: "#0E1410", fontSize: 13, fontWeight: 700, boxShadow: `0 0 8px ${h.color}80`, border: !c.inF ? `2px solid ${T.gold}` : "none" }}>✓</div>
                       : c.partial
-                        ? <div style={{ width: 26, height: 26, borderRadius: 7, background: `${h.color}33`, border: `0.5px solid ${h.color}`, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", color: h.color, fontSize: 12, fontWeight: 700 }}>~</div>
+                        ? <div style={{ width: 26, height: 26, borderRadius: 7, background: `${h.color}44`, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", color: h.color, fontSize: 12, fontWeight: 700 }}>~</div>
                         : !c.inF
                           ? <div style={{ width: 26, height: 26, borderRadius: 7, background: "rgba(255,255,255,0.02)", margin: "0 auto" }} />
                           : <div style={{ width: 26, height: 26, borderRadius: 7, background: "rgba(255,255,255,0.04)", border: "0.5px dashed rgba(255,255,255,0.08)", margin: "0 auto" }} />}
@@ -738,9 +738,9 @@ function MonthlyReport({ habits, entries }) {
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <button onClick={() => setMo(m => m - 1)} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", fontFamily: "inherit" }}>{icChevL()}</button>
+        <button onClick={() => setMo(m => m - 1)} style={{ ...glass2Style, borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", fontFamily: "inherit" }}>{icChevL()}</button>
         <div style={{ textAlign: "center" }}><div style={sec}>Mês</div><div style={{ fontSize: 18, fontWeight: 500, color: T.text, letterSpacing: "-0.02em" }}>{MONTHS[mn]} {yr}</div></div>
-        <button onClick={() => setMo(m => Math.min(0, m + 1))} disabled={mo >= 0} style={{ ...glass2Style, border: "none", borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", opacity: mo >= 0 ? 0.35 : 1, fontFamily: "inherit" }}>{icChevR()}</button>
+        <button onClick={() => setMo(m => Math.min(0, m + 1))} disabled={mo >= 0} style={{ ...glass2Style, borderRadius: 12, padding: "8px 12px", color: T.textSec, cursor: "pointer", opacity: mo >= 0 ? 0.35 : 1, fontFamily: "inherit" }}>{icChevR()}</button>
       </div>
       <Glass style={{ padding: 16, marginBottom: 14 }}>
         <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 12px", letterSpacing: "-0.02em" }}>Calendário</h3>
@@ -831,7 +831,7 @@ function AnnualReport({ habits, entries }) {
         <h3 style={{ fontFamily: "inherit", fontSize: 17, fontWeight: 500, color: T.text, margin: "0 0 16px", letterSpacing: "-0.02em" }}>🏆 Top hábitos do ano</h3>
         {topHabits.map((h, i) => (
           <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < topHabits.length - 1 ? "0.5px solid rgba(255,255,255,0.06)" : "none" }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: `${T.gold}28`, border: `0.5px solid ${T.gold}`, color: T.gold, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>#{i + 1}</div>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: `${T.gold}28`, color: T.gold, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, flexShrink: 0 }}>#{i + 1}</div>
             <div style={{ width: 38, height: 38, borderRadius: 12, background: `${h.color}4a`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><HabitIcon name={h.emoji} size={20} color={h.color} /></div>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, color: T.text, fontSize: 14 }}>{h.name}</div>
@@ -943,7 +943,9 @@ export default function Habitus() {
     <div style={{ minHeight: "100vh", background: "#050507", fontFamily: "'Geist','Inter',-apple-system,system-ui,sans-serif", maxWidth: 480, margin: "0 auto", position: "relative" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
+        button { outline: none; -webkit-appearance: none; }
+        input, select { outline: none; -webkit-appearance: none; }
         input, select, button { font-family: 'Geist','Inter',-apple-system,system-ui,sans-serif; }
         ::placeholder { color: rgba(235,235,245,0.3); }
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
@@ -973,7 +975,7 @@ export default function Habitus() {
               Habitus<span style={{ fontStyle: "italic", color: T.accent }}>.</span>
             </h1>
           </div>
-          <button onClick={() => { setEditHabit(null); setModal("form"); }} style={{ ...glass2Style, border: "none", borderRadius: 14, padding: "10px 14px", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: T.text, cursor: "pointer" }}>
+          <button onClick={() => { setEditHabit(null); setModal("form"); }} style={{ ...glass2Style, borderRadius: 14, padding: "10px 14px", display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: T.text, cursor: "pointer" }}>
             {icPlus()} Novo
           </button>
         </div>
