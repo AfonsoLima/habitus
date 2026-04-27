@@ -8,7 +8,7 @@ async function sbGet(t) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?se
 async function sbUpsert(t, rows) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}`, { method: "POST", headers: { ...SB, "Prefer": "resolution=merge-duplicates,return=minimal" }, body: JSON.stringify(rows) }); if (!r.ok) throw new Error(await r.text()); }
 async function sbDelete(t, id) { const r = await fetch(`${SUPABASE_URL}/rest/v1/${t}?id=eq.${id}`, { method: "DELETE", headers: SB }); if (!r.ok) throw new Error(await r.text()); }
 const habitToDb = h => ({ id: h.id, name: h.name, emoji: h.emoji, category: h.category, color: h.color, goal_type: h.goalType, goal_value: h.goalValue, goal_unit: h.goalUnit, frequency: h.frequency, created_at: h.createdAt, is_active: h.isActive });
-const habitFromDb = h => ({ id: h.id, name: h.name, emoji: h.emoji, category: h.category, color: h.color, goalType: h.goal_type, goalValue: Number(h.goal_value), goalUnit: h.goal_unit, frequency: h.frequency, createdAt: h.created_at, isActive: h.is_active });
+const habitFromDb = h => ({ id: h.id, name: h.name, emoji: h.emoji, category: h.category, color: h.color, goalType: h.goal_type, goalValue: Number(h.goal_value), goalUnit: h.goal_unit, frequency: h.frequency, createdAt: h.created_at, isActive: h.is_active === true || h.is_active === 'true' || h.is_active === 1 });
 const entryToDb = e => ({ id: e.id, habit_id: e.habitId, date: e.date, value: e.value, completed: e.completed });
 const entryFromDb = e => ({ id: e.id, habitId: e.habit_id, date: e.date, value: Number(e.value), completed: e.completed });
 
@@ -51,8 +51,8 @@ const T = {
   accent: "oklch(0.78 0.12 160)", accentSoft: "oklch(0.78 0.12 160 / 0.18)",
   gold: "oklch(0.82 0.11 75)", danger: "oklch(0.72 0.16 25)",
 };
-const glassStyle = { background: T.glass1, backdropFilter: "blur(28px) saturate(160%)", WebkitBackdropFilter: "blur(28px) saturate(160%)", border: "0.5px solid rgba(255,255,255,0.09)", borderRadius: 22, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.35)" };
-const glass2Style = { ...glassStyle, background: T.glass2 };
+const glassStyle = { background: T.glass1, backdropFilter: "blur(28px) saturate(160%)", WebkitBackdropFilter: "blur(28px) saturate(160%)", border: "none", borderRadius: 22, boxShadow: "inset 0  0 0 0.5px rgba(255,255,255,0.07), 0 8px 24px rgba(0,0,0,0.35)" };
+const glass2Style = { ...glassStyle, background: T.glass2, boxShadow: "inset 0 0 0 0.5px rgba(255,255,255,0.10), 0 8px 24px rgba(0,0,0,0.35)" };
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 const Ic = ({ d, s = 20, sw = 1.6 }) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
@@ -84,10 +84,18 @@ const HABIT_ICONS = {
   star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
   pen: "M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z",
   target: "M22 12h-4M6 12H2M12 6V2M12 22v-4M18 12a6 6 0 11-12 0 6 6 0 0112 0zm-4 0a2 2 0 11-4 0 2 2 0 014 0z",
+  clock: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 6v6l4 2",
+  muscle: "M14.5 12.5c1.5-1.5 2.5-4 1-6.5-1-1.5-3-2-4.5-1.5M9.5 11.5c-1.5 1.5-2.5 4-1 6.5 1 1.5 3 2 4.5 1.5M9.5 11.5l4.5 1M10.5 4.5l3 1M8 20l2-2M16 4l-2 2",
+  hands: "M9 5v6M7 5v4M5 6v3M11 5v6M13 5v6M15 5v4M17 6v3M5 9c0 4 3 7 7 8 4-1 7-4 7-8",
+  stop: "M12 2a10 10 0 100 20A10 10 0 0012 2zM8 8h8v8H8z",
 };
 const ICON_NAMES = Object.keys(HABIT_ICONS);
 
 function HabitIcon({ name = "leaf", size = 22, color = T.accent, sw = 1.6 }) {
+  // Support legacy emoji strings stored in DB
+  if (name && !HABIT_ICONS[name]) {
+    return <span style={{ fontSize: size * 0.85, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>{name}</span>;
+  }
   const d = HABIT_ICONS[name] || HABIT_ICONS.leaf;
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d={d} /></svg>;
 }
@@ -392,6 +400,53 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
         })}
       </div>
 
+      {/* Add unplanned habit — always visible */}
+      {allHabits.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <button onClick={() => setShowUnplanned(!showUnplanned)} style={{
+            width: "100%", padding: "11px 16px", borderRadius: 14, cursor: "pointer", fontFamily: "inherit",
+            border: "0.5px dashed rgba(255,255,255,0.2)", background: "rgba(255,255,255,0.03)",
+            color: T.textSec, fontWeight: 600, fontSize: 13,
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          }}>
+            {icPlus(15)}
+            {showUnplanned ? "Fechar" : "Adicionar hábito não planejado"}
+          </button>
+          {showUnplanned && (
+            <Glass style={{ marginTop: 8, padding: 14 }}>
+              <div style={{ fontSize: 10, color: T.textTer, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>
+                Hábitos não planejados para hoje
+              </div>
+              {unplannedAvailable.length === 0 ? (
+                <div style={{ fontSize: 13, color: T.textTer, textAlign: "center", padding: "8px 0" }}>
+                  Todos os hábitos já estão planejados ou registrados para este dia.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {unplannedAvailable.map(h => (
+                    <button key={h.id} onClick={() => { toggleEntry(h, selectedDate); setShowUnplanned(false); }} style={{
+                      display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
+                      borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                      border: "none", background: "rgba(255,255,255,0.05)",
+                      textAlign: "left", width: "100%",
+                    }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 11, background: `${h.color}4a`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <HabitIcon name={h.emoji} size={18} color={h.color} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>{h.name}</div>
+                        <div style={{ fontSize: 11, color: T.textTer, marginTop: 1 }}>{h.goalValue} {h.goalUnit} · {h.category}</div>
+                      </div>
+                      <span style={{ fontSize: 11, color: T.accent, fontWeight: 600, flexShrink: 0 }}>+ Adicionar</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </Glass>
+          )}
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {habits.length === 0 ? (
           <Glass style={{ padding: 40, textAlign: "center" }}>
@@ -438,53 +493,7 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
         })}
       </div>
 
-      {/* Add unplanned habit button */}
-      {unplannedAvailable.length > 0 && (
-        <div style={{ marginTop: 14 }}>
-          <button onClick={() => setShowUnplanned(!showUnplanned)} style={{
-            width: "100%", padding: "12px 16px", borderRadius: 16, cursor: "pointer", fontFamily: "inherit",
-            border: "0.5px dashed rgba(255,255,255,0.18)", background: "rgba(255,255,255,0.03)",
-            color: T.textSec, fontWeight: 600, fontSize: 13,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-            transition: "all 0.2s",
-          }}>
-            {icPlus(15)}
-            {showUnplanned ? "Fechar" : "Adicionar hábito não planejado"}
-          </button>
 
-          {showUnplanned && (
-            <Glass style={{ marginTop: 10, padding: 14 }}>
-              <div style={{ fontSize: 11, color: T.textTer, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 12 }}>
-                Selecione para adicionar ao dia
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {unplannedAvailable.map(h => (
-                  <button key={h.id} onClick={() => {
-                    toggleEntry(h, selectedDate);
-                    setShowUnplanned(false);
-                  }} style={{
-                    display: "flex", alignItems: "center", gap: 12, padding: "10px 12px",
-                    borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
-                    border: "0.5px solid rgba(255,255,255,0.09)", background: "rgba(255,255,255,0.04)",
-                    transition: "all 0.15s", textAlign: "left",
-                  }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 11, background: `${h.color}4a`, border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <HabitIcon name={h.emoji} size={18} color={h.color} />
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: T.text }}>{h.name}</div>
-                      <div style={{ fontSize: 11, color: T.textTer, marginTop: 2 }}>{h.goalValue} {h.goalUnit} · {h.category}</div>
-                    </div>
-                    <div style={{ fontSize: 11, color: T.accent, fontWeight: 600, display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-                      {icPlus(13)} Adicionar
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </Glass>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -863,12 +872,21 @@ export default function Habitus() {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const loadFromStorage = useCallback(async (spinner = false) => {
     if (spinner) setSyncing(true);
-    try { const [hr, er] = await Promise.all([sbGet("habits"), sbGet("entries")]); setHabits(hr.map(habitFromDb)); setEntries(er.map(entryFromDb)); }
-    catch (e) { console.error("Load error:", e); }
-    setLoaded(true); if (spinner) setSyncing(false);
+    setLoadError(null);
+    try {
+      const [hr, er] = await Promise.all([sbGet("habits"), sbGet("entries")]);
+      setHabits(hr.map(habitFromDb));
+      setEntries(er.map(entryFromDb));
+    } catch (e) {
+      console.error("Load error:", e);
+      setLoadError(e.message || "Erro ao conectar ao banco de dados");
+    }
+    setLoaded(true);
+    if (spinner) setSyncing(false);
   }, []);
 
   useEffect(() => { loadFromStorage(); }, []);
@@ -980,6 +998,15 @@ export default function Habitus() {
             <span style={{ display: "inline-block", animation: syncing ? "spin 1s linear infinite" : "none", fontSize: 14 }}>⟳</span> Sincronizar
           </button>
         </div>
+
+        {/* Error banner */}
+        {loadError && (
+          <div style={{ margin: "0 16px 12px", padding: "10px 14px", borderRadius: 12, background: "rgba(220,53,69,0.15)", border: "0.5px solid rgba(220,53,69,0.4)" }}>
+            <div style={{ fontSize: 12, color: T.danger, fontWeight: 600, marginBottom: 2 }}>⚠️ Erro ao carregar dados</div>
+            <div style={{ fontSize: 11, color: T.textSec, fontFamily: "monospace" }}>{loadError}</div>
+            <button onClick={() => loadFromStorage(true)} style={{ marginTop: 8, fontSize: 11, color: T.accent, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0 }}>Tentar novamente →</button>
+          </div>
+        )}
 
         {/* Content */}
         <div style={{ animation: "fadeIn 0.25s ease" }}>
