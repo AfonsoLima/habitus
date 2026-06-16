@@ -18,7 +18,13 @@ const brasiliaDateStr = d => d.toLocaleString("sv-SE", { timeZone: "America/Sao_
 const todayStr = () => brasiliaDateStr(new Date());
 const dateStr = d => brasiliaDateStr(d);
 const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
-const startOfWeek = d => { const r = new Date(d); r.setDate(r.getDate() - r.getDay()); return r; };
+const startOfWeek = d => {
+  const r = new Date(d);
+  const dow = r.getDay();
+  // Monday = 1, so offset = (dow + 6) % 7 brings Monday to 0
+  r.setDate(r.getDate() - ((dow + 6) % 7));
+  return r;
+};
 const DAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const CATEGORIES = ["Espiritual", "Intelectual", "Físico", "Profissional", "Saúde", "Relacional"];
@@ -31,15 +37,43 @@ const CAT_COLORS = {
 function calcStreak(habitId, entries, habits) {
   const habit = habits.find(h => h.id === habitId);
   if (!habit) return { current: 0, best: 0 };
-  const done = new Set(entries.filter(e => e.habitId === habitId && e.completed).map(e => e.date));
-  let current = 0, best = 0, count = 0;
-  for (let i = 0; i <= 365; i++) {
-    const d = dateStr(addDays(new Date(), -i)), dow = addDays(new Date(), -i).getDay();
+  const done = new Set(
+    entries.filter(e => e.habitId === habitId && isDone(e)).map(e => e.date)
+  );
+  const today = new Date();
+  const todayS = dateStr(today);
+
+  // Walk backwards day by day, only counting scheduled days
+  let current = 0, best = 0, run = 0, currentLocked = false;
+
+  for (let i = 0; i <= 730; i++) {
+    const d = addDays(today, -i);
+    const ds = dateStr(d);
+    const dow = d.getDay();
+
+    // Skip non-scheduled days
     if (!habit.frequency[dow]) continue;
-    if (done.has(d)) { count++; if (i <= 1) current = count; }
-    else { if (i === 0) current = 0; best = Math.max(best, count); count = 0; }
+
+    if (done.has(ds)) {
+      run++;
+      best = Math.max(best, run);
+    } else {
+      // Today not yet completed: don't break current streak, just skip
+      if (i === 0) continue;
+      // A past scheduled day was missed: lock current streak
+      if (!currentLocked) { current = run; currentLocked = true; }
+      run = 0;
+    }
   }
-  return { current, best: Math.max(best, count, current) };
+  // If no miss was ever hit, current = full run
+  if (!currentLocked) current = run;
+  return { current, best: Math.max(best, current) };
+}
+
+// Entry is "done" if completed flag OR any value was recorded (for time habits)
+function isDone(entry) {
+  if (!entry) return false;
+  return entry.completed === true || entry.completed === 1 || entry.completed === "true" || Number(entry.value) > 0;
 }
 
 // ─── TOKENS ───────────────────────────────────────────────────────────────────
@@ -348,7 +382,7 @@ function VBarChart({ data, height = 180 }) {
 function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, getEntry, toggleEntry, setEntryValue }) {
   const today = todayStr();
   const dates = Array.from({ length: 7 }, (_, i) => dateStr(addDays(new Date(), -6 + i)));
-  const done = habits.filter(h => getEntry(h.id, selectedDate)?.completed).length;
+  const done = habits.filter(h => isDone(getEntry(h.id, selectedDate))).length;
   const pct = habits.length > 0 ? Math.round((done / habits.length) * 100) : 0;
   const selDate = new Date(selectedDate + "T12:00:00");
   const selLabel = selDate.toDateString() === new Date().toDateString() ? "Hoje" : selDate.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
@@ -382,7 +416,7 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
         {dates.map(d => {
           const wd = new Date(d + "T12:00:00"), dow = wd.getDay();
           const dh = allHabits.filter(h => h.isActive && h.frequency[dow]);
-          const dn = dh.filter(h => getEntry(h.id, d)?.completed).length;
+          const dn = dh.filter(h => isDone(getEntry(h.id, d))).length;
           const isSel = d === selectedDate, p = dh.length > 0 ? dn / dh.length : 0;
           return (
             <button key={d} onClick={() => setSelectedDate(d)} style={{
@@ -486,7 +520,7 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
                   placeholder={String(h.goalValue)}
                   style={{ width: 54, padding: 6, borderRadius: 9, border: "none", background: "rgba(255,255,255,0.08)", fontSize: 12, textAlign: "center", color: T.text, outline: "none", fontFamily: "inherit" }}
                 />
-                <CheckButton completed={!!entry?.completed} partial={entry?.value > 0 && !entry?.completed} color={h.color} onClick={() => toggleEntry(h, selectedDate)} />
+                <CheckButton completed={isDone(entry)} partial={false} color={h.color} onClick={() => toggleEntry(h, selectedDate)} />
               </div>
             </Glass>
           );
@@ -519,7 +553,7 @@ function HabitsTab({ habits, entries, onEdit, onDelete, confirmDelete, onConfirm
         {filtered.map(h => {
           const streak = calcStreak(h.id, entries, habits);
           const last7 = Array.from({ length: 7 }, (_, i) => dateStr(addDays(new Date(), -6 + i)));
-          const done7 = last7.filter(d => { const dow = new Date(d + "T12:00:00").getDay(); return h.frequency[dow] && entries.find(e => e.habitId === h.id && e.date === d && e.completed); }).length;
+          const done7 = last7.filter(d => { const dow = new Date(d + "T12:00:00").getDay(); return h.frequency[dow] && entries.find(e => e.habitId === h.id && e.date === d && isDone(e)); }).length;
           const exp7 = last7.filter(d => h.frequency[new Date(d + "T12:00:00").getDay()]).length;
           const conf = confirmDelete === h.id;
           return (
@@ -588,7 +622,7 @@ function WeeklyReport({ habits, entries }) {
       const hasEntry = entries.find(e => e.habitId === h.id && e.date === ds);
       if (!h.frequency[dow] && !hasEntry) return; // skip if not scheduled AND no entry
       t++;
-      if (hasEntry?.completed) d++;
+      if (isDone(hasEntry)) d++;
     });
     return { name: h.name.split(" ")[0], pct: t > 0 ? Math.round(d / t * 100) : 0, color: h.color };
   });
@@ -600,7 +634,7 @@ function WeeklyReport({ habits, entries }) {
       ...entries.filter(e => e.date === ds).map(e => e.habitId)
     ]);
     const total = dayHabitIds.size;
-    const dn = [...dayHabitIds].filter(id => entries.find(e => e.habitId === id && e.date === ds && e.completed)).length;
+    const dn = [...dayHabitIds].filter(id => { const e = entries.find(e => e.habitId === id && e.date === ds); return isDone(e); }).length;
     return { name: DAYS[dow], pct: total > 0 ? Math.round(dn / total * 100) : 0 };
   });
   const avg = Math.round(lineData.reduce((s, d) => s + d.pct, 0) / 7);
@@ -649,8 +683,8 @@ function WeeklyReport({ habits, entries }) {
                   const inF = h.frequency[dow];
                   const e = entries.find(e => e.habitId === h.id && e.date === ds);
                   const counts = inF || e; // count if scheduled OR has entry
-                  if (counts) { ex++; if (e?.completed) dn++; }
-                  return { inF, hasEntry: !!e, completed: e?.completed, partial: e?.value > 0 && !e?.completed, key: i };
+                  if (counts) { ex++; if (isDone(e)) dn++; }
+                  return { inF, hasEntry: !!e, completed: isDone(e), partial: false, key: i };
                 });
                 return <tr key={h.id}>
                   <td style={{ paddingRight: 4 }}><div style={{ display: "flex", alignItems: "center", gap: 5 }}><HabitIcon name={h.emoji} size={13} color={h.color} sw={1.8} /><span style={{ fontSize: 11, fontWeight: 500, color: T.textSec, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 56 }}>{h.name.split(" ")[0]}</span></div></td>
@@ -676,10 +710,10 @@ function WeeklyReport({ habits, entries }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {active.map(h => {
             let cV = 0, cD = 0, cE = 0;
-            dayStrs.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; cE++; const e = entries.find(e => e.habitId === h.id && e.date === d); if (e?.completed) { cD++; cV += e.value || 0; } else if (e?.value > 0) cV += e.value; });
+            dayStrs.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; cE++; const e = entries.find(e => e.habitId === h.id && e.date === d); if (isDone(e)) { cD++; cV += Number(e?.value) || 0; } else if (e?.value > 0) cV += Number(e.value); });
             const prev = days.map(d => dateStr(addDays(d, -7)));
             let pV = 0, pD = 0;
-            prev.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; const e = entries.find(e => e.habitId === h.id && e.date === d); if (e?.completed) { pD++; pV += e.value || 0; } else if (e?.value > 0) pV += e.value; });
+            prev.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; const e = entries.find(e => e.habitId === h.id && e.date === d); if (isDone(e)) { pD++; pV += Number(e?.value) || 0; } else if (e?.value > 0) pV += Number(e.value); });
             const isT = h.goalType === "time";
             const main = isT ? (cV > 0 ? `Você dedicou ${fmtTime(cV)} de ${h.name.toLowerCase()} esta semana.` : `Você não registrou ${h.name.toLowerCase()} esta semana.`) : (cD > 0 ? `Você realizou ${h.name.toLowerCase()} ${cD} vez${cD > 1 ? "es" : ""} esta semana.` : `Você não realizou ${h.name.toLowerCase()} esta semana.`);
             let cmp = "", trend = 0;
@@ -715,11 +749,11 @@ function MonthlyReport({ habits, entries }) {
       ...entries.filter(e => e.date === d).map(e => e.habitId)
     ]);
     if (!dayHabitIds.size) return 0;
-    const dn = [...dayHabitIds].filter(id => entries.find(e => e.habitId === id && e.date === d && e.completed)).length;
+    const dn = [...dayHabitIds].filter(id => { const e = entries.find(e => e.habitId === id && e.date === d); return isDone(e); }).length;
     const p = dn / dayHabitIds.size;
     return p === 0 ? 0 : p < 0.33 ? 1 : p < 0.66 ? 2 : p < 1 ? 3 : 4;
   });
-  const catData = Object.entries(CAT_COLORS).map(([cat, color]) => { const ch = active.filter(h => h.category === cat), v = ch.reduce((s, h) => s + days.filter(d => entries.find(e => e.habitId === h.id && e.date === d && e.completed)).length, 0); return { name: cat, value: v, color }; }).filter(c => c.value > 0);
+  const catData = Object.entries(CAT_COLORS).map(([cat, color]) => { const ch = active.filter(h => h.category === cat), v = ch.reduce((s, h) => s + days.filter(d => isDone(entries.find(e => e.habitId === h.id && e.date === d))).length, 0); return { name: cat, value: v, color }; }).filter(c => c.value > 0);
   const total = catData.reduce((s, c) => s + c.value, 0);
   const weekTrend = [];
   for (let w = 0; w < 5; w++) {
@@ -730,7 +764,7 @@ function MonthlyReport({ habits, entries }) {
       const dow = new Date(ds + "T12:00:00").getDay();
       const ids = new Set([...active.filter(h => h.frequency[dow]).map(h => h.id), ...entries.filter(e => e.date === ds).map(e => e.habitId)]);
       t += ids.size;
-      d += [...ids].filter(id => entries.find(e => e.habitId === id && e.date === ds && e.completed)).length;
+      d += [...ids].filter(id => { const e = entries.find(e => e.habitId === id && e.date === ds); return isDone(e); }).length;
     });
     weekTrend.push({ name: `S${w + 1}`, pct: t > 0 ? Math.round(d / t * 100) : 0, color: T.accent });
   }
@@ -782,7 +816,7 @@ function AnnualReport({ habits, entries }) {
     const dow = new Date(d + "T12:00:00").getDay();
     const ids = new Set([...active.filter(h => h.frequency[dow]).map(h => h.id), ...entries.filter(e => e.date === d).map(e => e.habitId)]);
     if (!ids.size) return 0;
-    const dn = [...ids].filter(id => entries.find(e => e.habitId === id && e.date === d && e.completed)).length;
+    const dn = [...ids].filter(id => { const e = entries.find(e => e.habitId === id && e.date === d); return isDone(e); }).length;
     const p = dn / ids.size;
     return p === 0 ? 0 : p < 0.25 ? 1 : p < 0.5 ? 2 : p < 0.75 ? 3 : p < 1 ? 4 : 5;
   });
@@ -798,11 +832,11 @@ function AnnualReport({ habits, entries }) {
       const dow = new Date(ds + "T12:00:00").getDay();
       const ids = new Set([...active.filter(h => h.frequency[dow]).map(h => h.id), ...entries.filter(e => e.date === ds).map(e => e.habitId)]);
       t += ids.size;
-      d += [...ids].filter(id => entries.find(e => e.habitId === id && e.date === ds && e.completed)).length;
+      d += [...ids].filter(id => { const e = entries.find(e => e.habitId === id && e.date === ds); return isDone(e); }).length;
     });
     return { month: m, pct: t > 0 ? Math.round(d / t * 100) : 0, color: T.accent };
   });
-  const topHabits = active.map(h => { const dn = allDays.filter(d => entries.find(e => e.habitId === h.id && e.date === d && e.completed)).length; let best = 0, cur = 0; allDays.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; if (entries.find(e => e.habitId === h.id && e.date === d && e.completed)) { cur++; best = Math.max(best, cur); } else cur = 0; }); return { ...h, done: dn, bestStreak: best }; }).sort((a, b) => b.done - a.done).slice(0, 3);
+  const topHabits = active.map(h => { const dn = allDays.filter(d => isDone(entries.find(e => e.habitId === h.id && e.date === d))).length; let best = 0, cur = 0; allDays.forEach(d => { const dow = new Date(d + "T12:00:00").getDay(); if (!h.frequency[dow]) return; if (entries.find(e => e.habitId === h.id && e.date === d && e.completed)) { cur++; best = Math.max(best, cur); } else cur = 0; }); return { ...h, done: dn, bestStreak: best }; }).sort((a, b) => b.done - a.done).slice(0, 3);
   return (
     <div>
       <Glass style={{ padding: 16, marginBottom: 14 }}>
@@ -927,7 +961,38 @@ export default function Habitus() {
     );
     return [...scheduled, ...unplanned];
   }, [habits, selectedDate, entries]);
-  const totalStreak = useMemo(() => habits.reduce((s, h) => s + calcStreak(h.id, entries, habits).current, 0), [habits, entries]);
+  const totalStreak = useMemo(() => {
+    const today = new Date();
+    const active = habits.filter(h => h.isActive);
+    if (active.length === 0) return 0;
+
+    let current = 0, run = 0, currentLocked = false;
+
+    for (let i = 0; i <= 730; i++) {
+      const d = addDays(today, -i);
+      const ds = dateStr(d);
+      const dow = d.getDay();
+
+      // Habits planned for this day
+      const planned = active.filter(h => h.frequency[dow]);
+      if (planned.length === 0) continue; // no habits scheduled, skip day
+
+      const allDone = planned.every(h =>
+        entries.find(e => e.habitId === h.id && e.date === ds && isDone(e))
+      );
+
+      if (allDone) {
+        run++;
+      } else {
+        // Today not fully done yet: don't break streak
+        if (i === 0) continue;
+        if (!currentLocked) { current = run; currentLocked = true; }
+        run = 0;
+      }
+    }
+    if (!currentLocked) current = run;
+    return current;
+  }, [habits, entries]);
 
   if (!loaded) return (
     <div style={{ minHeight: "100vh", background: "#050507", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -983,7 +1048,7 @@ export default function Habitus() {
         {/* KPIs */}
         <div style={{ padding: "0 16px 16px", display: "flex", gap: 8 }}>
           {[
-            { label: "Hoje", value: `${todayHabits.filter(h => getEntry(h.id, selectedDate)?.completed).length}/${todayHabits.length}`, gold: false },
+            { label: "Hoje", value: `${todayHabits.filter(h => isDone(getEntry(h.id, selectedDate))).length}/${todayHabits.length}`, gold: false },
             { label: "Streaks", value: totalStreak, gold: true },
             { label: "Ativos", value: habits.filter(h => h.isActive).length, gold: false },
           ].map(k => (
