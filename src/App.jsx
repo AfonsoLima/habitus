@@ -85,7 +85,7 @@ const T = {
   accent: "oklch(0.78 0.12 160)", accentSoft: "oklch(0.78 0.12 160 / 0.18)",
   gold: "oklch(0.82 0.11 75)", danger: "oklch(0.72 0.16 25)",
 };
-const glassStyle = { background: "rgba(28,30,32,0.92)", border: "none", outline: "none", borderRadius: 22, boxShadow: "0 4px 20px rgba(0,0,0,0.4)", transform: "translateZ(0)" };
+const glassStyle = { background: "rgba(28,30,32,0.92)", border: "none", outline: "none", borderRadius: 22, boxShadow: "0 4px 20px rgba(0,0,0,0.4)" };
 const glass2Style = { ...glassStyle, background: "rgba(36,38,42,0.95)" };
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
@@ -250,7 +250,7 @@ function HabitForm({ habit, onSave, onCancel }) {
       </div>
 
       <Glass style={{ padding: 12, marginBottom: 14, display: "flex", gap: 10, alignItems: "center" }}>
-        <div style={{ width: 50, height: 50, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${form.color}44, rgba(255,255,255,0.04))`, border: "0.5px solid rgba(255,255,255,0.12)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+        <div style={{ width: 50, height: 50, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${form.color}44, rgba(255,255,255,0.04))`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <HabitIcon name={form.emoji} size={26} color={form.color} />
         </div>
         <input value={form.name} onChange={e => set("name", e.target.value)} placeholder="Nome do hábito"
@@ -496,7 +496,7 @@ function TodayTab({ habits, allHabits, entries, selectedDate, setSelectedDate, g
             <Glass key={h.id} style={{ padding: "14px 14px 14px 18px", display: "flex", alignItems: "center", gap: 12, position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: 2, background: h.color, boxShadow: `0 0 8px ${h.color}`, opacity: 0.8 }} />
               <div style={{ position: "relative", flexShrink: 0 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${h.color}4a, rgba(255,255,255,0.03))`, border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${h.color}4a, rgba(255,255,255,0.03))`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <HabitIcon name={h.emoji} size={22} color={h.color} />
                 </div>
                 {pctH > 0 && <MiniRing value={pctH} size={48} stroke={2.5} color={h.color} />}
@@ -560,7 +560,7 @@ function HabitsTab({ habits, entries, onEdit, onDelete, confirmDelete, onConfirm
             <Glass key={h.id} style={{ padding: "14px 14px 14px 18px", opacity: h.isActive ? 1 : 0.55, position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", left: 0, top: 12, bottom: 12, width: 3, borderRadius: 2, background: h.color, opacity: 0.7, boxShadow: `0 0 8px ${h.color}` }} />
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-                <div style={{ width: 44, height: 44, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${h.color}4a, rgba(255,255,255,0.03))`, border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <div style={{ width: 44, height: 44, borderRadius: 14, background: `radial-gradient(100% 100% at 30% 30%, ${h.color}4a, rgba(255,255,255,0.03))`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                   <HabitIcon name={h.emoji} size={22} color={h.color} />
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -593,7 +593,7 @@ function HabitsTab({ habits, entries, onEdit, onDelete, confirmDelete, onConfirm
                 {conf ? (
                   <>
                     <button onClick={() => onConfirmDelete(h.id)} style={{ flex: 1, padding: 8, borderRadius: 12, border: "none", background: "rgba(220,53,69,0.25)", color: T.danger, fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>Confirmar</button>
-                    <button onClick={onCancelDelete} style={{ padding: "8px 12px", borderRadius: 12, border: "0.5px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: T.textSec, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
+                    <button onClick={onCancelDelete} style={{ padding: "8px 12px", borderRadius: 12, border: "none", background: "rgba(255,255,255,0.08)", color: T.textSec, fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>✕</button>
                   </>
                 ) : (
                   <button onClick={() => onDelete(h.id)} style={{ padding: "8px 14px", borderRadius: 12, border: "none", background: `${T.danger}18`, color: T.danger, fontSize: 12, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center" }}>{icTrash()}</button>
@@ -995,9 +995,9 @@ export default function Habitus() {
   }, [habits, entries]);
 
   if (!loaded) return (
-    <div style={{ minHeight: "100vh", background: "#050507", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div style={{ minHeight: "100dvh", width: "100%", background: "#050507", display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div style={{ textAlign: "center" }}>
-        <div style={{ width: 64, height: 64, borderRadius: 20, background: "rgba(255,255,255,0.06)", border: "0.5px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}><HabitIcon name="leaf" size={32} color={T.accent} /></div>
+        <div style={{ width: 64, height: 64, borderRadius: 20, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}><HabitIcon name="leaf" size={32} color={T.accent} /></div>
         <div style={{ fontSize: 24, fontWeight: 500, letterSpacing: "-0.03em", color: T.text }}>Habitus<span style={{ fontStyle: "italic", color: T.accent }}>.</span></div>
         <div style={{ fontSize: 12, color: T.textTer, marginTop: 8 }}>Carregando...</div>
       </div>
@@ -1005,12 +1005,13 @@ export default function Habitus() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", background: "#050507", fontFamily: "'Geist','Inter',-apple-system,system-ui,sans-serif", maxWidth: 480, margin: "0 auto", position: "relative" }}>
+    <div style={{ minHeight: "100dvh", background: "#050507", fontFamily: "'Geist','Inter',-apple-system,system-ui,sans-serif", width: "100%", maxWidth: 480, margin: "0 auto", position: "relative", overflow: "hidden" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
+        html, body { background: #050507 !important; margin: 0; padding: 0; overflow-x: hidden; }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; outline: none; }
-        button { outline: none; -webkit-appearance: none; }
-        input, select { outline: none; -webkit-appearance: none; }
+        button { outline: none; -webkit-appearance: none; border: none; }
+        input, select { outline: none; -webkit-appearance: none; border: none; }
         input, select, button { font-family: 'Geist','Inter',-apple-system,system-ui,sans-serif; }
         ::placeholder { color: rgba(235,235,245,0.3); }
         input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
@@ -1024,7 +1025,7 @@ export default function Habitus() {
       `}</style>
 
       {/* Ambient */}
-      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+      <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0, background: "#050507" }}>
         <div style={{ position: "absolute", top: "-20%", left: "-10%", width: "60%", height: "50%", background: "radial-gradient(ellipse, oklch(0.4 0.13 160 / 0.2) 0%, transparent 70%)", filter: "blur(40px)" }} />
         <div style={{ position: "absolute", bottom: "10%", right: "-10%", width: "50%", height: "40%", background: "radial-gradient(ellipse, oklch(0.4 0.14 240 / 0.15) 0%, transparent 70%)", filter: "blur(40px)" }} />
       </div>
